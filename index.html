@@ -2,33 +2,28 @@
 <html lang="de">
 
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSA Elbe – Monatstabelle</title>
 
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSA Elbe – Monatstabelle</title>
+  <link rel="icon" type="image/png" href="https://www.wsa-elbe.wsv.de/SiteGlobals/Frontend/Webs/WNA-WSA/Images/logo.png?__blob=normal&v=2">
+  <link rel="stylesheet" href="style.css">
 
-<link rel="icon" type="image/png" href="https://www.wsa-elbe.wsv.de/SiteGlobals/Frontend/Webs/WNA-WSA/Images/logo.png?__blob=normal&v=2">
-<link rel="stylesheet" href="style.css">
+  <!-- XLSX zuerst -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 
+  <!-- ExcelJS nur nötig für Export/Backups -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" defer></script>
 
-<!-- XLSX zuerst -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-
-<!-- ExcelJS nur nötig für Export/Backups -->
-<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" defer></script>
-
-<!-- Dein Code genau EINMAL -->
-<script src="./script.js" defer></script>
-
+  <!-- Dein bestehender Code -->
+  <script src="./script.js" defer></script>
 </head>
+
 <body>
 
   <!-- #region 1) LIGHTBOX (Bild-Viewer) ------------------------------------ -->
-  
   <div id="imgLightbox">
-  
     <img alt="Vorschau">
-  
   </div>
   <!-- #endregion -->
 
@@ -70,9 +65,8 @@
     <button id="exportXlsxBtn" data-cancel-edits>Excel exportieren</button>
     <button id="chooseBackupFolderBtn">Backup-Ordner wählen</button>
     <button id="restoreBackupBtn">Backup wiederherstellen</button>
-        <button id="backToTop" data-cancel-edits>Zum Seitenanfang</button>
+    <button id="backToTop" data-cancel-edits>Zum Seitenanfang</button>
   </div>
-
   <!-- #endregion -->
 
   <!-- #region 5) TITEL / STATUS-BADGE -------------------------------------- -->
@@ -85,9 +79,7 @@
   </h1>
   <!-- #endregion -->
 
-
   <!-- #region 6) FILTER (Monat / Jahr / Anzeigen) -------------------------- -->
-
   <div class="controls">
     <label for="monat">Monat:</label>
     <select id="monat">
@@ -109,21 +101,18 @@
     <label for="jahr">Jahr:</label>
     <select id="jahr" style="width:110px"></select>
   </div>
-
   <!-- #endregion -->
 
   <!-- #region 7) LOCKBAR (Sperren / Entsperren) ---------------------------- -->
   <div class="lockbar">
     <span id="lockBadge" class="badge locked">Gesperrt – nur Lesen</span>
     <button id="unlockBtn" type="button">Bearbeiten entsperren</button>
-      <button id="lockBtn" data-cancel-edits>🔒 Sperren</button>
+    <button id="lockBtn" data-cancel-edits>🔒 Sperren</button>
   </div>
   <div class="readonly-hint">Zum Bearbeiten entsperren und Passwort eingeben.</div>
   <!-- #endregion -->
 
   <!-- #region 8) HAUPTTABELLE ---------------------------------------------- -->
- 
-
   <div class="table-wrap">
     <table id="monatsTabelle">
       <colgroup id="colgroup-monat">
@@ -151,12 +140,7 @@
       <tbody></tbody>
     </table>
   </div>
-
   <!-- #endregion -->
-
-  
-
-
 
   <!-- #region 9) UNTERE HSCROLL-LEISTE ------------------------------------ -->
   <div id="bottomScroll" class="hscroll">
@@ -177,6 +161,103 @@
   <!-- #endregion -->
 
 
-</body>
+  <!-- ====== Supabase-Anbindung: speichert/ladet das <tbody> pro Jahr+Monat ====== -->
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+    // Deine Supabase-Werte (anon key ist öffentlich nutzbar)
+    const SUPABASE_URL = "https://gsigwwrepcafkwdvadhk.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaWd3d3JlcGNhZmt3ZHZhZGhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NjY4MzIsImV4cCI6MjA3NjI0MjgzMn0.cNNzK_OhUlMTCtUdBMxXaazQCZbf0oa0JlS7abA1Lwk";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // DOM-Referenzen
+    const tbody   = document.querySelector("#monatsTabelle tbody");
+    const jahrSel = document.querySelector("#jahr");
+    const monatSel= document.querySelector("#monat");
+    const saveBtn = document.querySelector("#saveBtn");
+
+    // Aktuelle Auswahl bestimmen
+    function getYearMonth() {
+      const now = new Date();
+      const year  = parseInt(jahrSel?.value ?? now.getFullYear(), 10);
+      const month = parseInt(monatSel?.value ?? now.getMonth(), 10);
+      return { year, month };
+    }
+
+    // Laden aus Supabase
+    async function loadTableFromSupabase() {
+      const { year, month } = getYearMonth();
+      const { data, error } = await supabase
+        .from("monthly_html")
+        .select("html")
+        .eq("year", year)
+        .eq("month", month)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Supabase SELECT Fehler:", error);
+        return;
+      }
+      if (data?.html) {
+        tbody.innerHTML = data.html;
+        if (window.afterTbodyRestore) window.afterTbodyRestore();
+      }
+    }
+
+    // Speichern nach Supabase (Upsert pro year+month)
+    async function saveTableToSupabase() {
+      const { year, month } = getYearMonth();
+      const html = tbody.innerHTML;
+
+      const { error } = await supabase
+        .from("monthly_html")
+        .upsert({ year, month, html })
+        .select();
+
+      if (error) {
+        alert("Fehler beim Speichern: " + error.message);
+        console.error(error);
+        return;
+      }
+      if (window.showSavedToast) window.showSavedToast();
+      else alert("Gespeichert.");
+    }
+
+    // Events
+    if (saveBtn) {
+      saveBtn.addEventListener("click", async () => {
+        try { await saveTableToSupabase(); }
+        catch (e) { console.error(e); alert("Unbekannter Fehler beim Speichern."); }
+      });
+    }
+    if (monatSel) monatSel.addEventListener("change", loadTableFromSupabase);
+    if (jahrSel)  jahrSel.addEventListener("change",  loadTableFromSupabase);
+
+    // Initial nach DOM bereit laden
+    document.addEventListener("DOMContentLoaded", () => {
+      setTimeout(loadTableFromSupabase, 150);
+    });
+
+    // Realtime-Updates (optional, wenn mehrere gleichzeitig offen haben)
+    supabase
+      .channel("public:monthly_html")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "monthly_html" }, (payload) => {
+        const { year, month } = getYearMonth();
+        if (payload.new?.year === year && payload.new?.month === month) {
+          tbody.innerHTML = payload.new.html;
+          if (window.afterTbodyRestore) window.afterTbodyRestore();
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "monthly_html" }, (payload) => {
+        const { year, month } = getYearMonth();
+        if (payload.new?.year === year && payload.new?.month === month) {
+          tbody.innerHTML = payload.new.html;
+          if (window.afterTbodyRestore) window.afterTbodyRestore();
+        }
+      })
+      .subscribe();
+  </script>
+  <!-- ========================================================================= -->
+</body>
 </html>
