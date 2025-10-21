@@ -1337,7 +1337,7 @@ function saveVehicleState() {
   try {
     lsSetJson(FAHRZEUGE_KEY, FAHRZEUGE);
     lsSetJson(FAHRZEUGNAMEN_KEY, FAHRZEUGNAMEN);
-  } catch {  }
+  } catch { }
 }
 
 (function restoreVehicleState() {
@@ -1349,7 +1349,7 @@ function saveVehicleState() {
     if (n && typeof n === 'object') FAHRZEUGNAMEN = n;
 
     ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-  } catch {  }
+  } catch { }
 })();
 
 
@@ -1619,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-async function ensureLibs({ needXLSX=false, needExcelJS=false } = {}) {
+async function ensureLibs({ needXLSX = false, needExcelJS = false } = {}) {
   const deadline = Date.now() + 10000; // 10s
   while (true) {
     const ok = (!needXLSX || !!window.XLSX) && (!needExcelJS || !!window.ExcelJS);
@@ -1676,7 +1676,7 @@ async function autoImportLatestBackup() {
     }
     if (!files.length) { console.info('[autoImport] kein .xlsx gefunden'); return false; }
 
-    files.sort((a,b) => b.ts - a.ts);
+    files.sort((a, b) => b.ts - a.ts);
     const latest = files[0];
     console.info('[autoImport] importiere:', latest.name);
 
@@ -1996,6 +1996,8 @@ async function backupMonthToSharedFolder(year, monthIndex) {
 
 // #endregion
 
+
+
 // #region Fix: Restore-Button auf manuellen Restore umverdrahten
 
 document.getElementById('restoreBackupBtn')
@@ -2004,7 +2006,32 @@ document.getElementById('restoreBackupBtn')
 // #endregion
 
 
+
+//#region supabase
 // === Supabase: HTML des <tbody> pro (year, month) laden/speichern =========
+
+
+function bindCellInputEvents() {
+  document.querySelectorAll('#monatsTabelle tbody input').forEach((inputEl) => {
+    // Ursprungswert merken (für "changed"-Markierung)
+    inputEl.dataset.orig = inputEl.value;
+
+    // Eingabe-Handler wie beim initialen Render
+    inputEl.addEventListener('input', () => {
+      if (bearbeitungGesperrt) return;
+      setUnsaved(true);
+      updateChangedFlag(inputEl);
+      persistDebounced();
+    });
+  });
+}
+
+
+
+
+
+
+
 
 // Hilfsfunktion: aktuelle Auswahl aus den Selects
 function sbGetYearMonth() {
@@ -2016,7 +2043,7 @@ function sbGetYearMonth() {
 // Laden: überschreibt das aktuelle <tbody> mit dem gespeicherten HTML
 async function sbLoadTbody(year, month) {
   try {
-    if (!supabase || month === -1) return; // -1 = "Alle Monate" -> überspringen
+    if (!supabase || month === -1) return;
     const { data, error } = await supabase
       .from("monthly_html")
       .select("html")
@@ -2030,10 +2057,9 @@ async function sbLoadTbody(year, month) {
       if (!tb) return;
       tb.innerHTML = data.html;
 
-      // Falls dein Code danach noch Events re-binden muss:
-      if (window.afterTbodyRestore) window.afterTbodyRestore();
+      // WICHTIG: Events neu binden
+      bindCellInputEvents();
 
-      // Markierungen/Save-Bar zurücksetzen, damit „alles sauber“ ist
       clearChangeMarkersAndRebase?.();
       setUnsaved?.(false);
     }
@@ -2051,7 +2077,7 @@ async function sbSaveTbody(year, month) {
 
   const { error } = await supabase
     .from("monthly_html")
-    .upsert({ year, month, html })
+    .upsert({ year, month, html }, { onConflict: 'year,month' })
     .select();
   if (error) throw error;
 }
@@ -2067,7 +2093,7 @@ function sbSubscribeRealtime() {
         const tb = document.querySelector("#monatsTabelle tbody");
         if (tb) {
           tb.innerHTML = payload.new.html;
-          window.afterTbodyRestore?.();
+          bindCellInputEvents();     // <—
           clearChangeMarkersAndRebase?.();
           setUnsaved?.(false);
         }
@@ -2079,7 +2105,7 @@ function sbSubscribeRealtime() {
         const tb = document.querySelector("#monatsTabelle tbody");
         if (tb) {
           tb.innerHTML = payload.new.html;
-          window.afterTbodyRestore?.();
+          bindCellInputEvents();     // <—
           clearChangeMarkersAndRebase?.();
           setUnsaved?.(false);
         }
@@ -2088,6 +2114,8 @@ function sbSubscribeRealtime() {
     .subscribe();
 }
 
+
+//#endregion
 
 
 
@@ -2151,7 +2179,7 @@ function sbSubscribeRealtime() {
     // 5) Versuche vor dem ersten Render die neueste Backup-Excel still zu importieren
     //    (funktioniert nur, wenn der Ordner schon gewählt & Berechtigung ok ist)
     try {
-      await ensureLibs({ needXLSX: true }); 
+      await ensureLibs({ needXLSX: true });
       const did = await autoImportOnLoad?.({ onlyIfStoreEmpty: false });
       if (did) {
         persistStoreToLS?.();
@@ -2233,12 +2261,12 @@ function sbSubscribeRealtime() {
       persistStoreToLS?.();
 
       // --- Supabase: aktuelles <tbody> hochladen --------------------------------
-try {
-  await sbSaveTbody(y, m);
-} catch (err) {
-  console.error('Supabase Save Fehler:', err);
-  alert('Speichern in der Cloud fehlgeschlagen: ' + (err?.message || err));
-}
+      try {
+        await sbSaveTbody(y, m);
+      } catch (err) {
+        console.error('Supabase Save Fehler:', err);
+        alert('Speichern in der Cloud fehlgeschlagen: ' + (err?.message || err));
+      }
 
 
       try {
@@ -2304,7 +2332,6 @@ try {
 
 
 // #endregion
-
 
 
 
