@@ -688,7 +688,7 @@ function monthIndexFromName(name) {
   const candidates = [
     ['jan', 'januar'],
     ['feb', 'februar'],
-    ['maer', 'maerz', 'marz', 'mar', 'mär', 'maerz'],
+    ['maer', 'marz', 'mar', 'mär', 'maerz'],
     ['apr', 'april'],
     ['mai', 'may'],
     ['jun', 'juni'],
@@ -997,8 +997,8 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
   const wb = new ExcelJS.Workbook();
   const monate = monthNamesDE();
 
-  const blueHeader = "2F75B5";
-  const zebraARGB = "F2F2F2";
+  const blueHeader = "FF2F75B5";   // ARGB
+  const zebraARGB  = "FFF2F2F2";   // ARGB
   const weekendARGB = "FFF6DFD1";
   const holidayARGB = "FFDFEEDD";
 
@@ -2332,6 +2332,7 @@ function sbSubscribeRealtime() {
 
 
 // #endregion
+
 
 
 
