@@ -2075,12 +2075,28 @@ async function sbSaveTbody(year, month) {
   if (!tb) return;
   const html = tb.innerHTML;
 
-  const { error } = await supabase
+  const { data: existing, error: selErr } = await supabase
     .from("monthly_html")
-    .upsert({ year, month, html }, { onConflict: 'year,month' })
-    .select();
-  if (error) throw error;
+    .select("id")
+    .eq("year", year)
+    .eq("month", month)
+    .maybeSingle();
+  if (selErr) throw selErr;
+
+  if (existing?.id) {
+    const { error: updErr } = await supabase
+      .from("monthly_html")
+      .update({ html, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (updErr) throw updErr;
+  } else {
+    const { error: insErr } = await supabase
+      .from("monthly_html")
+      .insert({ year, month, html });
+    if (insErr) throw insErr;
+  }
 }
+
 
 // (Optional) Realtime-Updates (wenn Seite in mehreren Fenstern offen ist)
 function sbSubscribeRealtime() {
@@ -2332,6 +2348,7 @@ function sbSubscribeRealtime() {
 
 
 // #endregion
+
 
 
 
