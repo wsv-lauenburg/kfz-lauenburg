@@ -17,6 +17,16 @@ function getMonthData(y, m) {
   };
 }
 
+// === Supabase: Setup =======================================================
+const SUPABASE_URL = "https://gsigwwrepcafkwdvadhk.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaWd3d3JlcGNhZmt3ZHZhZGhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NjY4MzIsImV4cCI6MjA3NjI0MjgzMn0.cNNzK_OhUlMTCtUdBMxXaazQCZbf0oa0JlS7abA1Lwk";
+
+let supabase; // wird gleich gesetzt
+(async () => {
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+})();
+
 
 
 
@@ -431,6 +441,7 @@ function aktualisieren() {
     singleTable.style.display = 'table';
     titelSetzen(jahr, monat);
     tabelleErstellen(jahr, monat);
+    sbLoadTbody(jahr, monat);
   }
   afterRenderApply?.();
 }
@@ -1993,6 +2004,93 @@ document.getElementById('restoreBackupBtn')
 // #endregion
 
 
+// === Supabase: HTML des <tbody> pro (year, month) laden/speichern =========
+
+// Hilfsfunktion: aktuelle Auswahl aus den Selects
+function sbGetYearMonth() {
+  const y = parseInt(document.getElementById('jahr')?.value ?? new Date().getFullYear(), 10);
+  const m = parseInt(document.getElementById('monat')?.value ?? new Date().getMonth(), 10);
+  return { year: y, month: m };
+}
+
+// Laden: überschreibt das aktuelle <tbody> mit dem gespeicherten HTML
+async function sbLoadTbody(year, month) {
+  try {
+    if (!supabase || month === -1) return; // -1 = "Alle Monate" -> überspringen
+    const { data, error } = await supabase
+      .from("monthly_html")
+      .select("html")
+      .eq("year", year)
+      .eq("month", month)
+      .maybeSingle();
+
+    if (error) { console.warn("Supabase SELECT Fehler:", error); return; }
+    if (data?.html) {
+      const tb = document.querySelector("#monatsTabelle tbody");
+      if (!tb) return;
+      tb.innerHTML = data.html;
+
+      // Falls dein Code danach noch Events re-binden muss:
+      if (window.afterTbodyRestore) window.afterTbodyRestore();
+
+      // Markierungen/Save-Bar zurücksetzen, damit „alles sauber“ ist
+      clearChangeMarkersAndRebase?.();
+      setUnsaved?.(false);
+    }
+  } catch (e) {
+    console.warn("sbLoadTbody Fehler:", e);
+  }
+}
+
+// Speichern: aktuelles <tbody> hochladen (Upsert je year+month)
+async function sbSaveTbody(year, month) {
+  if (!supabase || month === -1) return;
+  const tb = document.querySelector("#monatsTabelle tbody");
+  if (!tb) return;
+  const html = tb.innerHTML;
+
+  const { error } = await supabase
+    .from("monthly_html")
+    .upsert({ year, month, html })
+    .select();
+  if (error) throw error;
+}
+
+// (Optional) Realtime-Updates (wenn Seite in mehreren Fenstern offen ist)
+function sbSubscribeRealtime() {
+  if (!supabase) return;
+  supabase
+    .channel("public:monthly_html")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "monthly_html" }, payload => {
+      const { year, month } = sbGetYearMonth();
+      if (payload.new?.year === year && payload.new?.month === month) {
+        const tb = document.querySelector("#monatsTabelle tbody");
+        if (tb) {
+          tb.innerHTML = payload.new.html;
+          window.afterTbodyRestore?.();
+          clearChangeMarkersAndRebase?.();
+          setUnsaved?.(false);
+        }
+      }
+    })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "monthly_html" }, payload => {
+      const { year, month } = sbGetYearMonth();
+      if (payload.new?.year === year && payload.new?.month === month) {
+        const tb = document.querySelector("#monatsTabelle tbody");
+        if (tb) {
+          tb.innerHTML = payload.new.html;
+          window.afterTbodyRestore?.();
+          clearChangeMarkersAndRebase?.();
+          setUnsaved?.(false);
+        }
+      }
+    })
+    .subscribe();
+}
+
+
+
+
 
 // #region Init/Wiring (vollständig)
 
@@ -2090,6 +2188,8 @@ document.getElementById('restoreBackupBtn')
         // nach Import direkt rendern & LS aktualisieren
         aktualisieren();
         afterRenderApply();
+        // Realtime-Listener starten
+        sbSubscribeRealtime();
         persistStoreToLS?.();
       } catch (err) {
         console.error(err);
@@ -2131,6 +2231,15 @@ document.getElementById('restoreBackupBtn')
       // aktuelle Eingaben vor dem Export sichern
       persistCurrentMonthToStore?.();
       persistStoreToLS?.();
+
+      // --- Supabase: aktuelles <tbody> hochladen --------------------------------
+try {
+  await sbSaveTbody(y, m);
+} catch (err) {
+  console.error('Supabase Save Fehler:', err);
+  alert('Speichern in der Cloud fehlgeschlagen: ' + (err?.message || err));
+}
+
 
       try {
         if (m === -1) {
@@ -2195,6 +2304,7 @@ document.getElementById('restoreBackupBtn')
 
 
 // #endregion
+
 
 
 
