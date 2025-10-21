@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSA Elbe – Monatstabelle</title>
+
+<link rel="icon" type="image/png" href="https://www.wsa-elbe.wsv.de/SiteGlobals/Frontend/Webs/WNA-WSA/Images/logo.png?__blob=normal&v=2">
+<link rel="stylesheet" href="style.css">
+
+
+<!-- XLSX zuerst -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+
+<!-- ExcelJS nur nötig für Export/Backups -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" defer></script>
+
+<!-- Dein Code genau EINMAL -->
+<script src="./script.js" defer></script>
+
+</head>
+<body>
+
+  <!-- #region 1) LIGHTBOX (Bild-Viewer) ------------------------------------ -->
+  
+  <div id="imgLightbox">
+  
+    <img alt="Vorschau">
+  
+  </div>
+  <!-- #endregion -->
+
+  <!-- #region 2) PASSWORT-MODAL ------------------------------------------- -->
+  <div id="passwortModal" class="modal">
+    <div class="modal-content" style="max-width:400px;text-align:center;">
+      <h2>Passwort eingeben</h2>
+      <input type="password" id="passwortEingabe" placeholder="Passwort"
+        style="padding:10px 14px;font-size:16px;border:1px solid #ccc;border-radius:6px;width:80%;margin-top:10px;">
+      <div id="passwortFehler"
+        style="color:#dc3545;font-weight:600;margin-top:12px;display:none;animation:fadeIn .3s ease;">
+        ❌ Falsches Passwort
+      </div>
+      <div style="margin-top:20px;">
+        <button id="passwortOk"
+          style="background:#198754;color:#fff;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;">Bestätigen</button>
+        <button id="passwortCancel"
+          style="background:#dc3545;color:#fff;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;margin-left:10px;">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+  <!-- #endregion -->
+
+  <!-- #region 3) LEGENDE (Farben + Fahrzeug-Legende) ----------------------- -->
+  <div class="legend-card" aria-label="Legende">
+    <div class="legend-item">
+      <span class="legend-swatch legend-weekend" aria-hidden="true"></span> Wochenende
+    </div>
+    <div class="legend-item">
+      <span class="legend-swatch legend-holiday" aria-hidden="true"></span> Feiertag
+    </div>
+  </div>
+  <div id="vehicleLegend" class="vehicle-legend"></div>
+  <!-- #endregion -->
+
+  <!-- #region 4) RECHTE BUTTONS (Export/Import/Top) ------------------------ -->
+  <div class="export-buttons">
+    <button id="importXlsxBtn" class="btn btn--excel-import editor-only" type="button">Excel <br> importieren</button>
+    <button id="exportXlsxBtn" data-cancel-edits>Excel exportieren</button>
+    <button id="chooseBackupFolderBtn">Backup-Ordner wählen</button>
+    <button id="restoreBackupBtn">Backup wiederherstellen</button>
+        <button id="backToTop" data-cancel-edits>Zum Seitenanfang</button>
+  </div>
+
+  <!-- #endregion -->
+
+  <!-- #region 5) TITEL / STATUS-BADGE -------------------------------------- -->
+  <h1>
+    Tabelle für <span id="monatName"></span>
+    <span id="statusAnzeige"
+      style="margin-left:20px;padding:4px 10px;border-radius:6px;color:black;background-color:rgb(253,17,17);">
+      Gesperrt
+    </span>
+  </h1>
+  <!-- #endregion -->
+
+
+  <!-- #region 6) FILTER (Monat / Jahr / Anzeigen) -------------------------- -->
+
+  <div class="controls">
+    <label for="monat">Monat:</label>
+    <select id="monat">
+      <option value="-1">Alle Monate</option>
+      <option value="0">Januar</option>
+      <option value="1">Februar</option>
+      <option value="2">März</option>
+      <option value="3">April</option>
+      <option value="4">Mai</option>
+      <option value="5">Juni</option>
+      <option value="6">Juli</option>
+      <option value="7">August</option>
+      <option value="8">September</option>
+      <option value="9">Oktober</option>
+      <option value="10">November</option>
+      <option value="11">Dezember</option>
+    </select>
+
+    <label for="jahr">Jahr:</label>
+    <select id="jahr" style="width:110px"></select>
+  </div>
+
+  <!-- #endregion -->
+
+  <!-- #region 7) LOCKBAR (Sperren / Entsperren) ---------------------------- -->
+  <div class="lockbar">
+    <span id="lockBadge" class="badge locked">Gesperrt – nur Lesen</span>
+    <button id="unlockBtn" type="button">Bearbeiten entsperren</button>
+      <button id="lockBtn" data-cancel-edits>🔒 Sperren</button>
+  </div>
+  <div class="readonly-hint">Zum Bearbeiten entsperren und Passwort eingeben.</div>
+  <!-- #endregion -->
+
+  <!-- #region 8) HAUPTTABELLE ---------------------------------------------- -->
+ 
+
+  <div class="table-wrap">
+    <table id="monatsTabelle">
+      <colgroup id="colgroup-monat">
+        <col class="col--tag">
+        <col class="col--fahrzeug">
+        <col class="col--dienstposten">
+        <col class="col--ort">
+        <col class="col--von">
+        <col class="col--bis">
+        <col class="col--bemerkung">
+        <col class="col--eingetragen">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Tag</th>
+          <th>Fahrzeug</th>
+          <th>Dienstposten</th>
+          <th class="ort-cell">Ort</th>
+          <th>Von (Zeit)</th>
+          <th>Bis (Zeit)</th>
+          <th>Bemerkung</th>
+          <th>eingetragen</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- #endregion -->
+
+  
+
+
+
+  <!-- #region 9) UNTERE HSCROLL-LEISTE ------------------------------------ -->
+  <div id="bottomScroll" class="hscroll">
+    <div class="hscroll__spacer"></div>
+  </div>
+  <!-- #endregion -->
+
+  <!-- #region 10) SAVE-BAR (Sichern unten) -------------------------------- -->
+  <div id="saveBar">
+    <div class="inner">
+      <button id="saveBtn" type="button">Sichern</button>
+    </div>
+  </div>
+  <!-- #endregion -->
+
+  <!-- #region 11) JAHRESANSICHT-CONTAINER --------------------------------- -->
+  <div id="multiMonate" style="display:none;max-width:1400px;margin:20px auto;"></div>
+  <!-- #endregion -->
+
+
+</body>
+
+</html>

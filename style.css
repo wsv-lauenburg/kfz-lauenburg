@@ -1,0 +1,1082 @@
+/* #region 1) BASIS & VARIABLEN */
+:root {
+  --ui-scale: 0.7;
+  --font-base: calc(18px * var(--ui-scale));
+  --font-table: calc(18px * var(--ui-scale));
+  --font-head: calc(20px * var(--ui-scale));
+  --line-h: calc(30px * var(--ui-scale));
+  --pad-6-8-v: calc(6px * var(--ui-scale));
+  --pad-6-8-h: calc(8px * var(--ui-scale));
+  --pad-4-6-v: calc(4px * var(--ui-scale));
+  --pad-4-6-h: calc(6px * var(--ui-scale));
+
+  /* Desktop-Spaltenbreiten */
+  --w-col-1: calc(95px * var(--ui-scale));
+  /* Tag */
+  --w-col-2: calc(70px * var(--ui-scale));
+  /* Fahrzeug */
+  --w-col-3: calc(120px * var(--ui-scale));
+  /* Dienstposten */
+  --w-col-4: calc(120px * var(--ui-scale));
+  /* Ort */
+  --w-col-5: calc(55px * var(--ui-scale));
+  /* Von */
+  --w-col-6: calc(55px * var(--ui-scale));
+  /* Bis */
+  --w-col-7: calc(360px * var(--ui-scale));
+  /* Bemerkung */
+  --w-col-8: calc(140px * var(--ui-scale));
+  /* Eingetragen */
+
+  /* Farben */
+  --row-weekend: #f6dfd1;
+  --row-feiertag: #dfeedd;
+  --row-firstday: #fff3bf;
+  --hover-weekend: rgba(246, 223, 209, .65);
+  --hover-feiertag: rgba(223, 238, 221, .65);
+  --hover-firstday: rgba(255, 243, 191, .65);
+  --hover-default: rgba(134, 225, 253, .65);
+
+  /* Tabellen-Gitter */
+  --grid-w: 2px;
+  --grid-color: #555;
+
+  /* Rechte Rail/Legenden */
+  --rail-gap: calc(12px * var(--ui-scale));
+  --rail-pad: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  --btn-font: calc(17px * var(--ui-scale));
+  --btn-pad-v: calc(12px * var(--ui-scale));
+  --btn-pad-h: calc(20px * var(--ui-scale));
+  --btn-width: calc(180px * var(--ui-scale));
+  --legend-font: calc(16px * var(--ui-scale));
+  --legend-gap: calc(16px * var(--ui-scale));
+  --legend-swatch: calc(18px * var(--ui-scale));
+}
+
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: "Calibri", "Carlito", "Segoe UI", Roboto, Arial, sans-serif;
+  padding-top: 16px;
+  font-size: var(--font-base);
+}
+
+/* #endregion 1) BASIS & VARIABLEN */
+
+
+/* #region 2) LAYOUT: WRAPPER, TABELLE, ZELLEN, INPUTS */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+#monatsTabelle {
+  table-layout: fixed;
+  width: 70%;
+  min-width: 900px;
+  max-width: 1400px;
+  margin: 20px auto 0;
+  border-collapse: collapse;
+  font-size: var(--font-table);
+  border: calc(var(--grid-w) + 1px) solid var(--grid-color);
+  font-variant-numeric: tabular-nums;
+}
+
+#monatsTabelle th,
+#monatsTabelle td {
+  border: var(--grid-w) solid var(--grid-color);
+  padding: var(--pad-6-8-v) var(--pad-6-8-h);
+  text-align: center;
+  min-height: var(--line-h);
+  vertical-align: middle;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.2;
+}
+
+#monatsTabelle thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: calc(28px * var(--ui-scale));
+  padding: var(--pad-4-6-v) var(--pad-4-6-h);
+  font-size: var(--font-head);
+  font-weight: 600;
+  color: #fff;
+  background: #1f6fbf;
+  border-color: var(--grid-color);
+  letter-spacing: .2px;
+}
+
+#monatsTabelle td input,
+#monatsTabelle td .ro {
+  width: 100%;
+  height: calc(var(--line-h) - 4px);
+  font-size: var(--font-table);
+  border: 0;
+  background: transparent;
+  outline: none;
+  box-sizing: border-box;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* #endregion 2) LAYOUT */
+
+
+/* #region 3) SPALTENBREITEN (Desktop via <colgroup>) */
+#monatsTabelle col.col--tag {
+  width: var(--w-col-1);
+}
+
+#monatsTabelle col.col--fahrzeug {
+  width: var(--w-col-2);
+}
+
+#monatsTabelle col.col--dienstposten {
+  width: var(--w-col-3);
+}
+
+#monatsTabelle col.col--ort {
+  width: var(--w-col-4);
+}
+
+#monatsTabelle col.col--von {
+  width: var(--w-col-5);
+}
+
+#monatsTabelle col.col--bis {
+  width: var(--w-col-6);
+}
+
+#monatsTabelle col.col--bemerkung {
+  width: var(--w-col-7);
+}
+
+#monatsTabelle col.col--eingetragen {
+  width: var(--w-col-8);
+}
+
+/* Fallback ohne <colgroup> */
+#monatsTabelle th:nth-child(1),
+#monatsTabelle td:nth-child(1) {
+  width: var(--w-col-1);
+}
+
+#monatsTabelle th:nth-child(2),
+#monatsTabelle td:nth-child(2) {
+  width: var(--w-col-2);
+}
+
+#monatsTabelle th:nth-child(3),
+#monatsTabelle td:nth-child(3) {
+  width: var(--w-col-3);
+}
+
+#monatsTabelle th:nth-child(4),
+#monatsTabelle td:nth-child(4) {
+  width: var(--w-col-4);
+}
+
+#monatsTabelle th:nth-child(5),
+#monatsTabelle td:nth-child(5) {
+  width: var(--w-col-5);
+}
+
+#monatsTabelle th:nth-child(6),
+#monatsTabelle td:nth-child(6) {
+  width: var(--w-col-6);
+}
+
+#monatsTabelle th:nth-child(7),
+#monatsTabelle td:nth-child(7) {
+  width: var(--w-col-7);
+}
+
+#monatsTabelle th:nth-child(8),
+#monatsTabelle td:nth-child(8) {
+  width: var(--w-col-8);
+}
+
+/* Sticky erste Spalte (Desktop) */
+#monatsTabelle thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  background: #1f6fbf;
+  color: #fff;
+  box-shadow: 2px 0 0 rgba(0, 0, 0, .06);
+}
+
+#monatsTabelle tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: #fff;
+  box-shadow: 2px 0 0 rgba(0, 0, 0, .06);
+}
+
+/* #endregion 3) SPALTENBREITEN */
+
+
+/* #region 4) ZUSTÄNDE & INTERAKTION  */
+/* Blockfarben */
+#monatsTabelle tr.weekend>td {
+  background: var(--row-weekend) !important;
+}
+
+#monatsTabelle tr.feiertag>td {
+  background: var(--row-feiertag) !important;
+}
+
+tr.first-of-day:not(.weekend):not(.feiertag)>td:not(:first-child) {
+  background: var(--row-firstday) !important;
+}
+
+/* Zebra pro Tag (via JS .row-alt) */
+#monatsTabelle tbody tr.row-alt td:not(:first-child) {
+  background: rgba(0, 0, 0, .02);
+}
+
+/* Context-Hover */
+#monatsTabelle tr.weekend td input:hover,
+#monatsTabelle tr.weekend td input:focus {
+  background: var(--hover-weekend) !important;
+}
+
+#monatsTabelle tr.feiertag td input:hover,
+#monatsTabelle tr.feiertag td input:focus {
+  background: var(--hover-feiertag) !important;
+}
+
+tr.first-of-day:not(.weekend):not(.feiertag) td input:hover,
+tr.first-of-day:not(.weekend):not(.feiertag) td input:focus {
+  background: var(--hover-firstday) !important;
+}
+
+/* Default Hover/Focus */
+#monatsTabelle tbody tr td input:hover {
+  background: var(--hover-default);
+}
+
+#monatsTabelle td input:focus-visible {
+  outline: 2px solid rgba(31, 111, 191, .5);
+  outline-offset: 0;
+}
+
+/* Changed-Highlight */
+#monatsTabelle input.changed {
+  background: #abebff !important;
+  outline: 2px solid #f0ad4e;
+  transition: background .2s ease, outline-color .2s ease;
+}
+
+/* Feiertag-Label */
+.feiertag-name {
+  display: block;
+  color: #1f6fbf;
+  padding: 6px 8px;
+  text-align: center;
+  line-height: 1.2;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  font-weight: 600;
+}
+
+/* #endregion 4) ZUSTÄNDE */
+
+
+/* #region 5) HEADER, ÜBERSCHRIFTEN & STEUERLEISTEN */
+h1,
+.controls,
+.lockbar,
+.readonly-hint {
+  text-align: center;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.readonly-hint {
+  font-size: calc(25px * var(--ui-scale));
+}
+
+body:not(.locked-mode) .readonly-hint {
+  display: none !important;
+}
+
+#lockBadge,
+#statusAnzeige {
+  font-size: calc(40px * var(--ui-scale));
+}
+
+#lockBadge {
+  display: none !important;
+}
+
+.controls select,
+.controls button {
+  font-size: calc(25px * var(--ui-scale));
+}
+
+#monatsTabelle thead th {
+  font-size: calc(16px * var(--ui-scale));
+  height: calc(32px * var(--ui-scale));
+}
+
+#monatsTabelle td input {
+  font-size: calc(18px * var(--ui-scale));
+}
+
+.legend-card {
+  font-size: calc(16px * var(--ui-scale));
+}
+
+h1 {
+  margin: 20px auto 10px;
+  font-size: 25px;
+}
+
+.controls {
+  margin: 8px auto 6px;
+}
+
+.lockbar,
+.readonly-hint {
+  margin: 6px auto 10px;
+}
+
+#statusAnzeige {
+  margin-left: 16px;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+/* Kompaktere Controls */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.controls label {
+  font-size: 13px;
+  margin-right: 4px;
+}
+
+.controls select {
+  font-size: 13px;
+  padding: 2px 6px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+/* #endregion 5) HEADER & STEUERLEISTEN */
+
+
+/* #region 6) SAVE-BAR ==== */
+#saveBar {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  display: none;
+  background: rgba(255, 255, 255, .98);
+  border-top: 1px solid #ddd;
+  z-index: 3000;
+  padding: 14px 16px;
+}
+
+#saveBar .inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#saveBtn {
+  background: #28a745;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .15);
+  transition: transform .08s ease, background .2s ease, box-shadow .2s ease;
+}
+
+#saveBtn:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .18);
+}
+
+body.savebar-visible {
+  padding-bottom: 80px;
+}
+
+/* #endregion 6) SAVE-BAR */
+
+
+/* #region 7) RECHTS: EXPORT/IMPORT/TOP + LEGENDE */
+@media (min-width:1200px) {
+  body {
+    margin-right: calc(260px * var(--ui-scale));
+  }
+}
+
+.export-buttons {
+  position: fixed;
+  right: 24px;
+  top: calc(168px + 60vh + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rail-gap);
+  z-index: 2000;
+  background: #fff;
+  padding: var(--rail-pad);
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .06);
+}
+
+#exportXlsxBtn,
+#backToTop,
+#importXlsxBtn,
+#chooseBackupFolderBtn,
+#restoreBackupBtn {
+  font-family: "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  padding: var(--btn-pad-v) var(--btn-pad-h);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .1);
+  width: var(--btn-width);
+  transition: background .25s ease, transform .08s ease, box-shadow .2s ease;
+}
+
+#exportXlsxBtn,
+#importXlsxBtn {
+  background: linear-gradient(145deg, #1f7a1f, #186318);
+  color: #fff;
+}
+
+#exportXlsxBtn:hover,
+#importXlsxBtn:hover {
+  background: linear-gradient(145deg, #186318, #145214);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(24, 99, 24, .35);
+}
+
+#backToTop {
+  background: linear-gradient(145deg, #6c757d, #5c636a);
+  color: #fff;
+}
+
+#backToTop:hover {
+  background: linear-gradient(145deg, #5c636a, #4f565c);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(108, 117, 125, .35);
+}
+
+#chooseBackupFolderBtn,
+#restoreBackupBtn {
+  background: linear-gradient(145deg, #464fff, #434cff);
+  color: #fff;
+}
+
+#chooseBackupFolderBtn:hover,
+#restoreBackupBtn:hover {
+  background: linear-gradient(145deg, #343eff, #3741ff);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(24, 99, 24, .35);
+}
+
+/* Farb-Legende */
+.legend-card {
+  position: fixed;
+  top: calc(95px * var(--ui-scale));
+  right: 24px;
+  z-index: 2000;
+  display: flex;
+  gap: var(--legend-gap);
+  align-items: center;
+  background: rgba(255, 255, 255, .98);
+  padding: calc(14px * var(--ui-scale)) calc(18px * var(--ui-scale));
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+  font-family: "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+}
+
+.legend-swatch {
+  width: var(--legend-swatch);
+  height: var(--legend-swatch);
+  border-radius: 4px;
+  border: 1px solid #000;
+  display: inline-block;
+}
+
+.legend-weekend {
+  background: #f6dfd1;
+}
+
+.legend-holiday {
+  background: #dfeedd;
+}
+
+/* Fahrzeug-Legende */
+.vehicle-legend {
+  position: fixed;
+  right: 24px;
+  top: calc(168px * var(--ui-scale));
+  z-index: 2000;
+  background: rgba(255, 255, 255, .98);
+  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .15);
+  min-width: calc(220px * var(--ui-scale));
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.vehicle-legend h3 {
+  margin: 0 0 calc(8px * var(--ui-scale));
+  font-size: 25px;
+  font-weight: 700;
+}
+
+.veh-group {
+  margin-top: calc(10px * var(--ui-scale));
+}
+
+.veh-group-title {
+  font-weight: 700;
+  margin: calc(8px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
+  font-size: calc(25px * var(--ui-scale)) !important;
+  color: #444;
+}
+
+.veh-legend-row {
+  display: flex;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) 0;
+  border-bottom: 1px solid #eee;
+  align-items: flex-start;
+}
+
+.veh-legend-id {
+  width: calc(42px * var(--ui-scale));
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.veh-legend-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.veh-legend-name {
+  font-weight: 600;
+  margin-right: calc(4px * var(--ui-scale));
+  font-size: 12px;
+}
+
+.veh-status {
+  display: inline-block;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: 999px;
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.4;
+  color: #fff;
+}
+
+.veh-status--on {
+  background: #d9f7d9;
+  color: #0a7a0a;
+  font-weight: 600;
+}
+
+.veh-status--part {
+  background: #fff7d1;
+  color: #6b5a00;
+  font-weight: 600;
+}
+
+.veh-status--off {
+  background: #f1f1f1;
+  color: #6b6b6b;
+  font-weight: 600;
+}
+
+.veh-pill {
+  display: inline-block;
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: 6px;
+  font-size: calc(12px * var(--ui-scale));
+  margin-left: calc(6px * var(--ui-scale));
+  background: #eef2ff;
+  color: #3d3d8a;
+}
+
+.veh-pill--danger {
+  background: #ffe5e5;
+  color: #a10000;
+}
+
+.veh-pill--muted {
+  background: #eee;
+  color: #555;
+}
+
+/* #endregion 7) RECHTS & LEGENDE */
+
+
+/* #region 8) MODALS & LIGHTBOX */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0, 0, 0, .6);
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+.modal .modal-content {
+  background: #fff;
+  padding: 28px;
+  border-radius: 16px;
+  width: 90vw;
+  max-width: 1100px;
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+  pointer-events: auto;
+}
+
+#imgLightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(0, 0, 0, .85);
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+}
+
+#imgLightbox img {
+  max-width: 95vw;
+  max-height: 95vh;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  pointer-events: auto;
+}
+
+.locked-mode #monatsTabelle td input {
+  pointer-events: none;
+  color: #000 !important;
+}
+
+.locked-mode #exportXlsxBtn,
+.locked-mode #importXlsxBtn,
+.locked-mode #chooseBackupFolderBtn,
+.locked-mode #restoreBackupBtn {
+  display: none !important;
+}
+
+/* #endregion 8) MODALS & LIGHTBOX */
+
+
+/* #region 9) SAMMELANSICHT (12 Monate) –  */
+#monatsTabelle,
+.miniMonat {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-table);
+  border: calc(var(--grid-w) + 1px) solid var(--grid-color);
+  background: #fff;
+}
+
+#monatsTabelle th,
+#monatsTabelle td,
+.miniMonat th,
+.miniMonat td {
+  border: var(--grid-w) solid var(--grid-color);
+  padding: var(--pad-6-8-v) var(--pad-6-8-h);
+  text-align: center;
+  min-height: var(--line-h);
+  vertical-align: middle;
+  white-space: normal;
+  overflow: visible;
+}
+
+#monatsTabelle thead th,
+.miniMonat thead th {
+  height: calc(28px * var(--ui-scale));
+  padding: var(--pad-4-6-v) var(--pad-4-6-h);
+  font-size: var(--font-head);
+  font-weight: 600;
+  color: #fff;
+  background: #1f6fbf;
+  border-color: var(--grid-color);
+  letter-spacing: .2px;
+}
+
+/* Fallback-Breiten für miniMonat */
+.miniMonat th:nth-child(1),
+.miniMonat td:nth-child(1) {
+  width: var(--w-col-1);
+}
+
+.miniMonat th:nth-child(2),
+.miniMonat td:nth-child(2) {
+  width: var(--w-col-2);
+}
+
+.miniMonat th:nth-child(3),
+.miniMonat td:nth-child(3) {
+  width: var(--w-col-3);
+}
+
+.miniMonat th:nth-child(4),
+.miniMonat td:nth-child(4) {
+  width: var(--w-col-4);
+}
+
+.miniMonat th:nth-child(5),
+.miniMonat td:nth-child(5) {
+  width: var(--w-col-5) !important;
+}
+
+.miniMonat th:nth-child(6),
+.miniMonat td:nth-child(6) {
+  width: var(--w-col-6) !important;
+}
+
+.miniMonat th:nth-child(7),
+.miniMonat td:nth-child(7) {
+  width: var(--w-col-7);
+}
+
+.miniMonat th:nth-child(8),
+.miniMonat td:nth-child(8) {
+  width: var(--w-col-8);
+}
+
+/* Inputs/Text in miniMonat */
+.miniMonat td input,
+.miniMonat td .ro {
+  width: 100%;
+  height: calc(var(--line-h) - 4px);
+  font-size: var(--font-table);
+  border: 0;
+  background: transparent;
+  outline: none;
+  box-sizing: border-box;
+  color: #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  padding: 0;
+}
+
+.miniMonat tr.weekend>td {
+  background: var(--row-weekend) !important;
+}
+
+.miniMonat tr.feiertag>td {
+  background: var(--row-feiertag) !important;
+}
+
+.miniMonat tr.first-of-day:not(.weekend):not(.feiertag)>td:not(:first-child) {
+  background: var(--row-firstday) !important;
+}
+
+.miniMonat tbody tr.row-alt td:not(:first-child) {
+  background: rgba(0, 0, 0, .02);
+}
+
+/* #endregion 9) SAMMELANSICHT */
+
+
+/* #region 10) HSCROLL (optional)*/
+.hscroll {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  height: 18px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: rgba(255, 255, 255, .97);
+  border-top: 1px solid #ddd;
+  z-index: 2500;
+  display: none;
+}
+
+.hscroll__spacer {
+  height: 1px;
+}
+
+body {
+  padding-bottom: 24px;
+}
+
+.hscroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.hscroll::-webkit-scrollbar-thumb {
+  background: #c7c7c7;
+  border-radius: 6px;
+}
+
+.hscroll::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+/* #endregion 10) HSCROLL */
+
+
+/* #region 11) Handy Anpassung Layout */
+
+/* Keine Inputs auf Handy */
+.mobile-readonly #monatsTabelle td input {
+  pointer-events: none;
+  color: #000;
+  background: transparent;
+}
+
+
+@media (max-width:950px) {
+
+  .legend-card,
+  #vehicleLegend,
+  .export-buttons,
+  #backToTop,
+  #saveBar,
+  .lockbar,
+  .readonly-hint,
+  #statusAnzeige,
+  #unlockBtn,
+  #lockBtn,
+  #anzeigenBtn,
+  #restoreBackupBtn {
+    display: none !important;
+  }
+
+  html,
+  body {
+    height: auto;
+    overflow-x: hidden;
+  }
+
+  body {
+    margin: 0;
+    padding: 10px 10px 24px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+    width: 100%;
+    border-radius: 8px;
+  }
+
+  #monatsTabelle {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    table-layout: fixed !important;
+    font-size: 12px !important;
+  }
+
+  #monatsTabelle thead th,
+  #monatsTabelle th:first-child,
+  #monatsTabelle td:first-child {
+    position: static !important;
+    box-shadow: none !important;
+    z-index: 1 !important;
+  }
+
+  #monatsTabelle thead th {
+    font-size: 12px !important;
+    padding: 4px 6px !important;
+  }
+
+  #monatsTabelle td {
+    font-size: 12px !important;
+    padding: 5px 6px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  #monatsTabelle td input,
+  #monatsTabelle td .ro {
+    height: 20px !important;
+    font-size: 12px !important;
+    padding: 2px 3px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    /* horizontales Scrollen erlauben */
+    -webkit-overflow-scrolling: touch;
+  }
+    #monatsTabelle thead th {
+      white-space: normal;
+      /* nicht auf einer Zeile erzwingen */
+      overflow-wrap: anywhere;
+      /* lange Wörter/Komposita umbruchfähig */
+      word-break: break-word;
+      /* Fallback */
+      line-height: 1.2;
+      /* etwas kompakter */
+    }
+
+  /* Tabellenbreite festlegen */
+  #monatsTabelle {
+    width: auto !important;
+    min-width: 700px !important;
+    max-width: none !important;
+  }
+
+  /* Spaltenprozente */
+  #monatsTabelle>colgroup>col {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--tag {
+    width: 10% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--fahrzeug {
+    width: 6% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--dienstposten {
+    width: 12% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--ort {
+    width: 12% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--von {
+    width: 8% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--bis {
+    width: 8% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--bemerkung {
+    width: 25% !important;
+  }
+
+  #monatsTabelle>colgroup>col.col--eingetragen {
+    width: 20% !important;
+  }
+
+  /* Hover dezent */
+  #monatsTabelle td input:hover {
+    background: transparent !important;
+  }
+
+  .feiertag-name {
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+
+  h1 {
+    font-size: 18px;
+    margin: 8px 0 6px;
+    text-align: center;
+  }
+}
+
+/* #endregion 11) RESPONSIVE */
+
+
+
+/* #region 13) HOTFIXES (Einheitliche Zentrierung & Kopfzeilen) */
+
+/* #region Bemerkung, und Zeitangaben sollen mittig sein */
+#monatsTabelle td input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Einheitlich: Von, Bis, Bemerkung -> Zelle & Text mittig */
+#monatsTabelle td.col-von,
+#monatsTabelle td.col-bis,
+#monatsTabelle td.col-bemerkung,
+#monatsTabelle td.col-eingetragen {
+  text-align: center;
+}
+
+#monatsTabelle td.col-von input,
+#monatsTabelle td.col-bis input,
+#monatsTabelle td.col-bemerkung input,
+#monatsTabelle td.col-eingetragen input {
+  text-align: center;
+}
+
+/* Kopfzeilen für Von (5), Bis (6), Bemerkung (7) zentrieren */
+#monatsTabelle thead th:nth-child(5),
+#monatsTabelle thead th:nth-child(6),
+#monatsTabelle thead th:nth-child(7),
+#monatsTabelle thead th:nth-child(8) {
+  text-align: center;
+}
+
+/* #endregion */
+
+
+/* #region Mobile: größere Tabellenbreite explizit */
+@media (max-width:950px) {}
+
+/* #endregion */
+
+/* #endregion 13) HOTFIXES */
