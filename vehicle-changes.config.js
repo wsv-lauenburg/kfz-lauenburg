@@ -34,12 +34,6 @@ Hinweise:
 
 window.VEHICLE_CHANGES = `
 
-01.01.2025 entfernen 220
-01.01.2025 entfernen 221
-01.01.2025 entfernen 222
-01.01.2025 entfernen 700
-01.01.2025 entfernen 223
-01.01.2025 entfernen 231
 
 
 
