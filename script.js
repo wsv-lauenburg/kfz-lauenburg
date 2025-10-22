@@ -1876,9 +1876,9 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
 // #region Supabase Realtime (CLIENT) – Einbindung & sanfte Overrides
 //
 // 1) 🔐 Supabase-Projekt-Schlüssel eintragen
-const SUPABASE_URL = "https://<DEIN-PROJEKT>.supabase.co";
-const SUPABASE_ANON_KEY = "<DEIN-ANON-KEY>";
-const SB_TABLE = "monthly_html";     // Tabellenname wie verwendet
+const SUPABASE_URL = "https://xhurgredpyomfuialtuc.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhodXJncmVkcHlvbWZ1aWFsdHVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2Njk2MjksImV4cCI6MjA3NjI0NTYyOX0.SMufhxqOFvK6rzsCuYn45GLazgAxaekOt6TJgCrEUeo";
+const SB_TABLE = "monthly_html";     
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2) 📌 Einmalig in Supabase (SQL) ausführen – NICHT hier im JS, nur zur Info:
