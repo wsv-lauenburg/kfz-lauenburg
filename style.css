@@ -606,7 +606,7 @@ body.savebar-visible {
 .veh-legend-name {
   font-weight: 600;
   margin-right: calc(4px * var(--ui-scale));
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .veh-status {
@@ -996,11 +996,11 @@ body {
   }
 
   #monatsTabelle>colgroup>col.col--dienstposten {
-    width: 12% !important;
+    width: 14% !important;
   }
 
   #monatsTabelle>colgroup>col.col--ort {
-    width: 12% !important;
+    width: 15% !important;
   }
 
   #monatsTabelle>colgroup>col.col--von {
@@ -1016,7 +1016,7 @@ body {
   }
 
   #monatsTabelle>colgroup>col.col--eingetragen {
-    width: 20% !important;
+    width: 15% !important;
   }
 
   /* Hover dezent */
