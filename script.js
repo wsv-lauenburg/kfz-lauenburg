@@ -1,94 +1,3 @@
-// --- RAM-Store (keine Persistenz) ------------------------------------------
-const STORE = {
-  // key: `${year}-${monthIndex}` -> { rowsPerDay: number, rows: Array<[id, dienstposten, ort, von, bis, bemerkung, eingetragen]> }
-  byMonth: new Map()
-};
-
-function monthKey(y, m) { return `${y}-${m}`; }
-
-function setMonthData(y, m, rowsPerDay, rows) {
-  STORE.byMonth.set(monthKey(y, m), { rowsPerDay, rows });
-}
-
-function getMonthData(y, m) {
-  return STORE.byMonth.get(monthKey(y, m)) || {
-    rowsPerDay: Math.max(1, FAHRZEUGE.length || 1),
-    rows: []
-  };
-}
-
-// === Supabase: Setup =======================================================
-const SUPABASE_URL = "https://gsigwwrepcafkwdvadhk.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaWd3d3JlcGNhZmt3ZHZhZGhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2NjY4MzIsImV4cCI6MjA3NjI0MjgzMn0.cNNzK_OhUlMTCtUdBMxXaazQCZbf0oa0JlS7abA1Lwk";
-
-let supabase; // wird gleich gesetzt
-(async () => {
-  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-})();
-
-
-
-
-// #region Handy Input verhindern ------------------ */
-
-
-// Nur auf echten Phones (kleine Device-Breite + Touch + kein Hover) -> read-only
-function applyPhoneReadOnly() {
-  const isPhone =
-    matchMedia("(max-device-width: 820px)").matches &&   // echte Gerätebreite, kein Desktop-Resize
-    matchMedia("(pointer: coarse)").matches &&           // Touch-Eingabe
-    matchMedia("(hover: none)").matches;                 // kein Hover
-
-  document.body.classList.toggle("mobile-readonly", isPhone);
-
-  // Inputs hard read-only machen
-  document.querySelectorAll("#monatsTabelle input").forEach(inp => {
-    inp.disabled = isPhone;
-  });
-}
-
-// Initial + bei Orientierung/Resize (Gerätewechsel)
-document.addEventListener("DOMContentLoaded", applyPhoneReadOnly);
-addEventListener("orientationchange", applyPhoneReadOnly);
-addEventListener("resize", applyPhoneReadOnly);
-
-
-// #endregion ---------------------------------------------------------------- */
-
-
-// #region Heute-Quelle (DEV-Override von "heute") --------------------------- */
-const IS_DEV = ['localhost', '127.0.0.1'].includes(location.hostname);
-
-let __t = null;
-const toISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const parseISO = s => {
-  const m = s?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
-};
-const getTodayDate = () => (IS_DEV && __t ? parseISO(__t) : new Date());
-const getTodayISO = () => toISO(getTodayDate());
-
-if (IS_DEV) {
-  window.testToday = s => {
-    const d = parseISO(s);
-    if (d) {
-      __t = toISO(d);
-      console.info('Test-Heute:', __t);
-      aktualisieren?.();
-      renderFahrzeugLegende?.();
-    }
-  };
-  window.clearTestToday = () => {
-    __t = null;
-    console.info('Echtes Heute aktiv');
-    aktualisieren?.();
-    renderFahrzeugLegende?.();
-  };
-  const q = new URLSearchParams(location.search).get('today');
-  if (q) __t = toISO(parseISO(q));
-}
-// #endregion ---------------------------------------------------------------- */
 
 
 // #region Utilities: LS-JSON, Escape, Debounce, Dates, Array ---------------- */
@@ -133,10 +42,6 @@ function addDays(date, days) {
   return d;
 }
 
-function excelDateUTC(y, m, d) {
-  return new Date(Date.UTC(y, m, d)); // 00:00 UTC (kein Shift)
-}
-
 // Feiertage (bundesweit + ein paar bewegliche) */
 function easterSunday(y) {
   const a = y % 19,
@@ -179,24 +84,6 @@ function feiertagsNameFür(d) {
   return '';
 }
 
-function parseGermanDateToISO(d) {
-  if (!d) return null;
-  if (d instanceof Date) return toISO(d);
-  const s = String(d).trim();
-  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/);
-  if (m) {
-    let [_, dd, mm, yy] = m;
-    if (yy.length === 2) yy = `20${yy}`;
-    return `${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  return null;
-}
-
-function deDate(iso) {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
-}
 
 // #endregion ---------------------------------------------------------------- */
 
@@ -225,14 +112,11 @@ const COLS = ['fahrzeug', 'dienstposten', 'ort', 'von', 'bis', 'bemerkung', 'ein
 const YEAR_START = 2020;
 const YEAR_END = 2030;
 
-// Persistenz-Keys
-const FAHRZEUGE_KEY = 'fahrzeugListe';
-const FAHRZEUGNAMEN_KEY = 'fahrzeugNamen';
 
-// Basis-Fahrzeuge (ohne Aktiv/Events)
-let FAHRZEUGE = ["700", "220", "221", "222", "223", "231"];
+// Basis-Fahrzeuge kommen NUR aus Excel (und optionale Namen aus Excel / Changes).
+let FAHRZEUGE = [];
 let FAHRZEUGNAMEN = {};
-let ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+let ZEILEN_PRO_TAG = MIN_ZEILEN_PRO_TAG; // wird nach Excel-Import angepasst
 
 // Save-Bar
 let unsavedChanges = false;
@@ -246,6 +130,21 @@ let LAST_RPD_PER_DAY = [];   // Index 1..tageImMonat
 
 // #endregion ---------------------------------------------------------------- */
 
+
+// #region Storage-Keys & Meta ------------------------------------------------ */
+
+function speicherKey(jahr, monat) { return `tabelle_${jahr}_${monat}`; }
+function speicherMetaKey(jahr, monat) { return `tabelle_meta_${jahr}_${monat}`; }
+
+function speichereMeta(jahr, monat, meta) { lsSetJson(speicherMetaKey(jahr, monat), meta); }
+function ladeMeta(jahr, monat) { return lsGetJson(speicherMetaKey(jahr, monat), null); }
+
+function ladeDaten(jahr, monat) {
+  const s = localStorage.getItem(speicherKey(jahr, monat));
+  return s ? JSON.parse(s) : null;
+}
+
+// #endregion ---------------------------------------------------------------- */
 
 
 // #region UI: Jahresauswahl, Titel, Export-Buttonlabel, Save-Bar ------------- */
@@ -367,22 +266,10 @@ reflowRightRail();
 // Minimal: Eingabefeld-Erzeuger (ohne type="time")
 function makeInput(colKey, value = "") {
   const inp = document.createElement('input');
-  inp.type = 'text';                 // immer Text – kein time
+  inp.type = 'text';                 
   inp.maxLength = INPUT_MAX[colKey] ?? 10;
   inp.value = value;
   return inp;
-}
-
-
-
-function snapshotTable() {
-  const rows = [];
-  document.querySelectorAll('#monatsTabelle tbody tr').forEach((tr) => {
-    const cols = [];
-    tr.querySelectorAll('input').forEach((input) => cols.push(input.value));
-    rows.push(cols);
-  });
-  return rows;
 }
 
 // #endregion ---------------------------------------------------------------- */
@@ -392,7 +279,7 @@ function snapshotTable() {
 
 function baueGrundAuswahl() {
   baueJahresAuswahl();
-  const heute = getTodayDate();
+  const heute = new Date();
   const jahrSel = document.getElementById('jahr');
   const monatSel = document.getElementById('monat');
   const yr = heute.getFullYear();
@@ -419,7 +306,7 @@ function aktualisieren() {
   let jahr = parseInt(document.getElementById('jahr').value, 10);
 
   if (!Number.isFinite(jahr)) {
-    jahr = (getTodayDate()).getFullYear();
+    jahr = (new Date()).getFullYear();
     const sel = document.getElementById('jahr');
     if (sel && sel.value !== String(jahr)) sel.value = String(jahr);
   }
@@ -427,8 +314,6 @@ function aktualisieren() {
     alert(`Bitte ein Jahr zwischen ${YEAR_START} und ${YEAR_END} auswählen.`);
     return;
   }
-
-  try { persistCurrentMonthToStore(); persistStoreToLS(); } catch { }
 
   const singleTable = document.getElementById('monatsTabelle');
   const multi = document.getElementById('multiMonate');
@@ -441,7 +326,6 @@ function aktualisieren() {
     singleTable.style.display = 'table';
     titelSetzen(jahr, monat);
     tabelleErstellen(jahr, monat);
-    sbLoadTbody(jahr, monat);
   }
   afterRenderApply?.();
 }
@@ -449,7 +333,7 @@ function aktualisieren() {
 // #endregion ---------------------------------------------------------------- */
 
 
-// #region Fahrzeug-Legende (ohne aktiv/inaktiv) ------------------------------ */
+// #region Fahrzeug-Legende ------------------------------ */
 
 function renderFahrzeugLegende() {
   const box = document.getElementById('vehicleLegend');
@@ -481,7 +365,6 @@ function setVehicleName(id, name) {
   const clean = String(name || '').trim();
   if (clean) {
     FAHRZEUGNAMEN[id] = clean;
-    saveVehicleState();
   }
 }
 
@@ -497,22 +380,29 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
   const readOnlyMulti = !!targetTbody;
   const tageImMonat = new Date(jahr, monatIndex + 1, 0).getDate();
 
-  const { rowsPerDay: rowsPerDayFromStore, rows } = getMonthData(jahr, monatIndex);
-  const rowsPerDayToday = Math.max(MIN_ZEILEN_PRO_TAG, rowsPerDayFromStore || FAHRZEUGE.length || 1);
+  const rowsPerDayToday = Math.max(MIN_ZEILEN_PRO_TAG, FAHRZEUGE.length || 1);
 
-  // tag -> Map(fahrzeugId -> [dienstposten, ort, von, bis, bemerkung, eingetragen])
-  const savedPerDay = new Map();
-  for (let day = 1; day <= tageImMonat; day++) {
-    const start = (day - 1) * rowsPerDayToday;
-    const slice = rows.slice(start, start + rowsPerDayToday);
+  const loadSavedRowsMapForDay = (j, m, day, dim) => {
+    const saved = ladeDaten(j, m) || [];
+    const meta = ladeMeta(j, m);
+    const tage = dim || new Date(j, m + 1, 0).getDate();
+
+    let savedRPD = parseInt(meta?.rowsPerDay, 10);
+    if (!Number.isFinite(savedRPD) || savedRPD < 1) {
+      savedRPD = Math.max(1, Math.round(saved.length / Math.max(1, tage)));
+    }
+    const start = (day - 1) * savedRPD;
+    const block = saved.slice(start, start + savedRPD);
+
     const map = new Map();
-    (slice || []).forEach(r => {
-      const id = String(r?.[0] ?? '').trim();
-      if (!id) return;
-      map.set(id, [r[1] ?? '', r[2] ?? '', r[3] ?? '', r[4] ?? '', r[5] ?? '', r[6] ?? '']);
-    });
-    savedPerDay.set(day, map);
-  }
+    for (const row of block) {
+      if (!row || !row.length) continue;
+      const id = String(row[0] ?? '').trim();
+      if (!id) continue;
+      map.set(id, [row[1] ?? '', row[2] ?? '', row[3] ?? '', row[4] ?? '', row[5] ?? '', row[6] ?? '']);
+    }
+    return map;
+  };
 
   LAST_RPD_PER_DAY = [];
   let zeilenIndexGlobal = 0;
@@ -522,10 +412,12 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
     const datumText = datum.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
     const feiertagName = feiertagsNameFür(datum);
 
-    LAST_RPD_PER_DAY[tag] = rowsPerDayToday;
-    const savedMap = savedPerDay.get(tag) || new Map();
+    const rpdToday = rowsPerDayToday;
+    LAST_RPD_PER_DAY[tag] = rpdToday;
 
-    for (let zeile = 0; zeile < rowsPerDayToday; zeile++) {
+    const savedMap = loadSavedRowsMapForDay(jahr, monatIndex, tag, tageImMonat);
+
+    for (let zeile = 0; zeile < rpdToday; zeile++) {
       const tr = document.createElement('tr');
 
       if (feiertagName) tr.classList.add('feiertag');
@@ -534,14 +426,18 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
         if (zeile % 2 === 1) tr.classList.add('row-alt');
       }
 
+      // Datumsspalte
       if (zeile === 0) {
         tr.classList.add('first-of-day');
+
         const tdDate = document.createElement('td');
         tdDate.classList.add('col-datum');
+
         const wrap = document.createElement('div');
         const dt = document.createElement('div');
         dt.className = 'datum-text';
-        dt.textContent = datumText.charAt(0).toUpperCase() + datumText.slice(1);
+        const datumTextFormatted = datumText.charAt(0).toUpperCase() + datumText.slice(1);
+        dt.textContent = datumTextFormatted;
         wrap.appendChild(dt);
         if (feiertagName) {
           const fh = document.createElement('div');
@@ -550,18 +446,19 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
           wrap.appendChild(fh);
         }
         tdDate.appendChild(wrap);
-        tdDate.rowSpan = rowsPerDayToday;
+        tdDate.rowSpan = rpdToday;
         tr.appendChild(tdDate);
       }
 
+      // restliche Spalten
       for (let i = 0; i < 7; i++) {
-        const colKey = COLS[i];
+        const colKey = COLS[i];                  // 'fahrzeug' | 'dienstposten' | 'ort' | 'von' | 'bis' | 'bemerkung' | 'eingetragen'
         const td = document.createElement('td');
-        td.classList.add(`col-${colKey}`);
+        td.classList.add(`col-${colKey}`);       // <-- feste Spaltenklasse
         td.dataset.colKey = colKey;
 
         if (colKey === 'fahrzeug') {
-          td.classList.add('text-center');
+          td.classList.add('text-center');       // ID mittig, wenn gewünscht
           const id = FAHRZEUGE[zeile] || '';
           const label = document.createElement('span');
           label.textContent = id;
@@ -587,20 +484,32 @@ function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
             div.textContent = vorbefuellt;
             td.appendChild(div);
           } else {
-            const inputEl = makeInput(colKey, vorbefuellt);
+            // Fallback, falls makeInput entfernt wurde
+            let inputEl;
+            if (typeof makeInput === 'function') {
+              inputEl = makeInput(colKey, vorbefuellt);
+            } else {
+              inputEl = document.createElement('input');
+              // wenn du keine nativen Time-Picker willst, lass überall 'text'
+              inputEl.type = (colKey === 'von' || colKey === 'bis') ? 'text' : 'text';
+              inputEl.maxLength = INPUT_MAX[colKey] ?? 10;
+              inputEl.value = vorbefuellt;
+            }
             inputEl.classList.add('cell-input', `cell-${colKey}`);
             inputEl.dataset.orig = vorbefuellt;
             inputEl.dataset.row = zeilenIndexGlobal;
             inputEl.dataset.col = i;
+
             inputEl.addEventListener('input', () => {
               if (bearbeitungGesperrt) return;
               setUnsaved(true);
               updateChangedFlag(inputEl);
-              persistDebounced();
             });
+
             td.appendChild(inputEl);
           }
         }
+
         tr.appendChild(td);
       }
 
@@ -627,7 +536,7 @@ function anzeigenAlleMonate(jahr) {
 
   if (!Number.isFinite(jahr)) {
     const uiVal = parseInt(document.getElementById('jahr')?.value, 10);
-    jahr = Number.isFinite(uiVal) ? uiVal : (getTodayDate()).getFullYear();
+    jahr = Number.isFinite(uiVal) ? uiVal : (new Date()).getFullYear();
   }
 
   for (let m = 0; m < 12; m++) {
@@ -667,106 +576,192 @@ function anzeigenAlleMonate(jahr) {
 // #endregion 
 
 
-// #region Excel: Sheet-/Workbook-Utilities 
 
-function hasExpectedHeader(aoa) {
-  const norm = s => String(s ?? "").trim().toLowerCase();
-  for (let i = 0; i < Math.min(10, aoa.length); i++) {
-    const row = (aoa[i] || []).map(norm);
-    const hasFahrzeug = row.some(c => c.includes("fahrzeug"));
-    const hasDienstposten = row.some(c => c.includes("dienstposten"));
-    const hasBemerkung = row.some(c => c.includes("bemerkung"));
-    if (hasFahrzeug && hasDienstposten && hasBemerkung) return true;
+//#region Import Excel
+
+async function importAllMonthYearSheets(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, cellNF: true, cellText: false });
+
+  // Fahrzeugliste (optional) ziehen
+  applyVehicleListFromWorkbook(wb);
+  ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+
+  const imported = [];
+  const skippedNoHeader = [];
+  const skippedNoMY = [];
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+
+    const my = parseMonthYearFromSheetName(sheetName);
+    if (!my) { skippedNoMY.push(sheetName); continue; }
+
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || [];
+    if (!hasExpectedHeader(aoa)) { skippedNoHeader.push(sheetName); continue; }
+
+    parseSheetToStorage(ws, my.year, my.monthIndex);
+    imported.push({ name: sheetName, ...my });
   }
+
+  if (imported.length) {
+    const first = imported[0];
+    document.getElementById('jahr').value = first.year;
+    document.getElementById('monat').value = first.monthIndex;
+  }
+
+  // UI refresh
+  aktualisieren();
+  updateExportButtonLabel();
+  renderFahrzeugLegende();
+  reflowRightRail?.();
+
+  // Zusätzlich: aktuelle Auswahl explizit neu rendern
+  const curYear = parseInt(document.getElementById('jahr').value, 10) || (new Date()).getFullYear();
+  const curMonth = parseInt(document.getElementById('monat').value, 10) || 0;
+  tabelleErstellen(curYear, curMonth);
+  renderFahrzeugLegende();
+  reflowRightRail?.();
+}
+
+function applyVehicleListFromWorkbook(wb) {
+  for (const name of wb.SheetNames || []) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const listOwn = extractVehicleList_OWN(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || []);
+    if (listOwn.length) {
+      FAHRZEUGE = listOwn.map(x => x.id);
+      FAHRZEUGNAMEN = {};
+      for (const { id, name } of listOwn) FAHRZEUGNAMEN[id] = name;
+      ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+      return true;
+    }
+  }
+
+  for (const name of wb.SheetNames || []) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const list = extractVehicleList_FALLBACK(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || []);
+    if (list.length) {
+      FAHRZEUGE = list.map(x => x.id);
+      FAHRZEUGNAMEN = {};
+      for (const { id, name } of list) FAHRZEUGNAMEN[id] = name;
+      ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+      return true;
+    }
+  }
+
+  const ids = collectVehiclesFromWorkbook(wb);
+  if (ids.length) {
+    FAHRZEUGE = ids;
+    FAHRZEUGNAMEN = FAHRZEUGNAMEN || {};
+    ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+    return true;
+  }
+
   return false;
 }
 
-function monthIndexFromName(name) {
-  if (!name) return null;
-  let s = String(name).toLowerCase();
-  try { s = s.normalize('NFD').replace(/\p{Diacritic}/gu, ''); } catch { }
-  const candidates = [
-    ['jan', 'januar'],
-    ['feb', 'februar'],
-    ['maer', 'marz', 'mar', 'mär', 'maerz'],
-    ['apr', 'april'],
-    ['mai', 'may'],
-    ['jun', 'juni'],
-    ['jul', 'juli'],
-    ['aug', 'august'],
-    ['sep', 'sept', 'september'],
-    ['okt', 'oct', 'oktober', 'october'],
-    ['nov', 'november'],
-    ['dez', 'dec', 'dezember', 'december'],
-  ];
-  for (let i = 0; i < candidates.length; i++) {
-    if (candidates[i].some(tok => s.includes(tok))) return i;
-  }
-  const mNum = s.match(/\b(0?[1-9]|1[0-2])(?=(?:\D|$))/);
-  if (mNum) return parseInt(mNum[1], 10) - 1;
-  return null;
-}
+function extractVehicleList_OWN(aoa) {
+  const rows = aoa.length;
+  const cols = Math.max(...aoa.map(r => r.length)) || 0;
 
-function detectYear(sheetName, aoa) {
-  if (typeof sheetName === 'string') {
-    const m = sheetName.match(/\b(20\d{2}|19\d{2})\b/);
-    if (m) return parseInt(m[1], 10);
-  }
-  const MAX_R = Math.min(25, aoa.length);
-  const freq = new Map();
-  for (let r = 0; r < MAX_R; r++) {
-    const row = aoa[r] || [];
-    const MAX_C = Math.min(12, row.length);
-    for (let c = 0; c < MAX_C; c++) {
-      const text = String(row[c] ?? '');
-      const hits = text.match(/\b(20\d{2}|19\d{2})\b/g);
-      if (hits) for (const y of hits) {
-        const yi = parseInt(y, 10);
-        if (yi >= 1900 && yi <= 2100) freq.set(yi, (freq.get(yi) || 0) + 1);
+  const norm = v => String(v ?? '').trim().toLowerCase();
+
+  let minCol = 0;
+  outer:
+  for (let r = 0; r < Math.min(rows, 20); r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = norm(aoa[r]?.[c]);
+      if (v === 'wochenende' || v === 'feiertag') {
+        minCol = Math.max(minCol, c);
+        break outer;
       }
     }
   }
-  if (freq.size) return [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  return null;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = Math.max(0, minCol); c < cols - 1; c++) {
+      const a = norm(aoa[r]?.[c]);
+      const b = norm(aoa[r]?.[c + 1]);
+      if ((a === 'id') && (b === 'fahrzeugname' || b === 'fahrzeug')) {
+        const out = [];
+        for (let rr = r + 1; rr < rows; rr++) {
+          const rawId = String(aoa[rr]?.[c] ?? '').trim();
+          const name = String(aoa[rr]?.[c + 1] ?? '').trim();
+          if (!rawId && !name) break;
+
+          if (/^\d{2,4}$/.test(rawId) && name) {
+            out.push({ id: rawId.replace(/^0+/, ''), name });
+          } else if (!rawId && name) {
+            break;
+          }
+        }
+        return out;
+      }
+    }
+  }
+  return [];
 }
 
-// #endregion
+function extractVehicleList_FALLBACK(aoa) {
+  const rows = aoa.length;
+  const cols = Math.max(...aoa.map(r => r.length)) || 0;
 
+  const isId = (v) => /^\s*\d{2,4}\s*$/.test(String(v ?? ''));
+  const isText = (v) => String(v ?? '').trim().length > 0;
 
-// #region Excel: Import – eigenes Exportformat + generisch
+  let best = [];
+  for (let c = 0; c < cols - 1; c++) {
+    let block = [];
+    let started = false;
 
-function tryParseOwnExport(aoa, headerRowIdx, targetYear, monthIndex) {
-  const hdr = (aoa[headerRowIdx] || []).map(s => String(s ?? '').trim().toLowerCase());
-  const want = ["tag", "fahrzeug", "dienstposten", "ort", "von", "bis", "bemerkung", "eingetragen"];
-  const looksOk = want.every((h, i) => (hdr[i] || '').startsWith(h));
-  if (!looksOk) return null;
+    for (let r = 0; r < Math.min(rows, 1000); r++) {
+      const left = aoa[r]?.[c];
+      const right = aoa[r]?.[c + 1];
 
-  const MIN = 1, MAX = 30;
-  let rowsPerDay = Math.min(Math.max(FAHRZEUGE.length || ZEILEN_PRO_TAG || 1, MIN), MAX);
+      if (isId(left) && isText(right)) {
+        block.push({ id: String(left).trim().replace(/^0+/, ''), name: String(right).trim() });
+        started = true;
+        if (block.length >= 150) break;
+      } else {
+        if (started) break;
+      }
+    }
 
-  const bodyRows = aoa.slice(headerRowIdx + 1);
-
-  // Nutzspalten B..H (Index 1..7)
-  const rows = bodyRows.map(r => ([
-    String(r[1] ?? '').trim(),
-    String(r[2] ?? '').trim(),
-    String(r[3] ?? '').trim(),
-    String(r[4] ?? '').trim(),
-    String(r[5] ?? '').trim(),
-    String(r[6] ?? '').trim(),
-    String(r[7] ?? '').trim(),
-  ]));
-
-  const daysInMonth = new Date(targetYear, monthIndex + 1, 0).getDate();
-  const needed = rowsPerDay * daysInMonth;
-
-  const out = rows.slice(0, needed);
-  while (out.length < needed) out.push(['', '', '', '', '', '', '']);
-
-  // WICHTIG: NICHT speichern, nur zurückgeben
-  return { rowsPerDay, rowsArray: out };
+    if (block.length >= 2 && block.length > best.length) {
+      best = block;
+    }
+  }
+  return best;
 }
 
+
+function collectVehiclesFromWorkbook(wb) {
+  const ids = new Set();
+  const looksLikeId = v => /^\s*\d{2,4}\s*$/.test(String(v ?? ''));
+  const norm = s => String(s ?? '').trim().toLowerCase();
+
+  for (const sheetName of wb.SheetNames || []) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || [];
+    if (!aoa.length) continue;
+
+    const headerRow = aoa.find(r => Array.isArray(r) && r.some(c => norm(c) === 'fahrzeug'));
+    if (!headerRow) continue;
+    const hdrIdx = aoa.indexOf(headerRow);
+    const colFzg = headerRow.findIndex(c => norm(c) === 'fahrzeug');
+    if (colFzg < 0) continue;
+
+    for (let r = hdrIdx + 1; r < aoa.length; r++) {
+      const v = aoa[r]?.[colFzg];
+      if (looksLikeId(v)) ids.add(String(v).trim().replace(/^0+/, ''));
+    }
+  }
+  return Array.from(ids).sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
+}
 
 function parseSheetToStorage(ws, targetYear, monthIndex) {
   const norm = (s) => String(s ?? '').trim().toLowerCase();
@@ -777,23 +772,20 @@ function parseSheetToStorage(ws, targetYear, monthIndex) {
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
   if (!aoa || !aoa.length) throw new Error('Keine Daten im Blatt.');
 
-  // Headerzeile suchen
   let headerRowIdx = -1;
   for (let i = 0; i < Math.min(10, aoa.length); i++) {
     const row = (aoa[i] || []).map(x => norm(x));
-    if (row.includes('fahrzeug') && row.includes('dienstposten') &&
-      (row.includes('bemerkung') || row.includes('bemerkungen'))) { headerRowIdx = i; break; }
+    if (
+      row.includes('fahrzeug') &&
+      row.includes('dienstposten') &&
+      (row.includes('bemerkung') || row.includes('bemerkungen'))
+    ) { headerRowIdx = i; break; }
   }
   if (headerRowIdx === -1) headerRowIdx = 0;
 
-  // eigener Export?
   const own = tryParseOwnExport(aoa, headerRowIdx, targetYear, monthIndex);
-  if (own) {
-    setMonthData(targetYear, monthIndex, own.rowsPerDay, own.rowsArray);
-    return own;
-  }
+  if (own) return own;
 
-  // generischer Parser
   const header = (aoa[headerRowIdx] || []).map(x => norm(x));
   const dataRows = aoa.slice(headerRowIdx + 1);
 
@@ -819,6 +811,12 @@ function parseSheetToStorage(ws, targetYear, monthIndex) {
     tag: idx.tag,
     datum: idx.datum,
   };
+  const maxCol = Math.max(0, header.length - 1);
+  if (use.von === use.ort) use.von = Math.min(use.ort + 1, maxCol);
+  if (use.bis === use.ort || use.bis === use.von) {
+    use.bis = Math.min(((Number.isInteger(use.von) ? use.von : use.ort) + 1), maxCol);
+  }
+
   const tageImMonat = new Date(targetYear, monthIndex + 1, 0).getDate();
 
   function extractDayNumber(txt) {
@@ -865,8 +863,9 @@ function parseSheetToStorage(ws, targetYear, monthIndex) {
       Math.max((FAHRZEUGE.length || ZEILEN_PRO_TAG || 1), MIN_ZEILEN_PRO_TAG),
       MAX_ZEILEN_PRO_TAG
     );
-    setMonthData(targetYear, monthIndex, rowsPerDayEmpty, []);
-    return { rowsPerDay: rowsPerDayEmpty, rowsArray: [] };
+    localStorage.setItem(speicherKey(targetYear, monthIndex), JSON.stringify([]));
+    speichereMeta(targetYear, monthIndex, { rowsPerDay: rowsPerDayEmpty });
+    return { rowsPerDay: rowsPerDayEmpty };
   }
 
   let rowsPerDay = Math.max(...dayRows.map((b, i) => i ? b.length : 0));
@@ -879,15 +878,103 @@ function parseSheetToStorage(ws, targetYear, monthIndex) {
     normalized2D.push(...block);
   }
 
-  setMonthData(targetYear, monthIndex, rowsPerDay, normalized2D);
-  return { rowsPerDay, rowsArray: normalized2D };
+  localStorage.setItem(speicherKey(targetYear, monthIndex), JSON.stringify(normalized2D));
+  speichereMeta(targetYear, monthIndex, { rowsPerDay });
+  return { rowsPerDay };
 }
 
-// #endregion 
+function tryParseOwnExport(aoa, headerRowIdx, targetYear, monthIndex) {
+  const hdr = (aoa[headerRowIdx] || []).map(s => String(s ?? '').trim().toLowerCase());
+  const want = ["tag", "fahrzeug", "dienstposten", "ort", "von", "bis", "bemerkung", "eingetragen"];
+  const looksOk = want.every((h, i) => (hdr[i] || '').startsWith(h));
+  if (!looksOk) return null;
+
+  const MIN = 1, MAX = 30;
+  let rowsPerDay = Math.min(Math.max(FAHRZEUGE.length || ZEILEN_PRO_TAG || 1, MIN), MAX);
+
+  const bodyRows = aoa.slice(headerRowIdx + 1);
+
+  // Wir lesen Nutzspalten B..H (Index 1..7)
+  const rows = bodyRows.map(r => ([
+    String(r[1] ?? '').trim(),
+    String(r[2] ?? '').trim(),
+    String(r[3] ?? '').trim(),
+    String(r[4] ?? '').trim(),
+    String(r[5] ?? '').trim(),
+    String(r[6] ?? '').trim(),
+    String(r[7] ?? '').trim(),
+  ]));
+
+  const daysInMonth = new Date(targetYear, monthIndex + 1, 0).getDate();
+  const needed = rowsPerDay * daysInMonth;
+
+  const out = rows.slice(0, needed);
+  while (out.length < needed) out.push(['', '', '', '', '', '', '']);
+
+  localStorage.setItem(speicherKey(targetYear, monthIndex), JSON.stringify(out));
+  speichereMeta(targetYear, monthIndex, { rowsPerDay });
+  return { rowsPerDay };
+}
+
+function hasExpectedHeader(aoa) {
+  const norm = s => String(s ?? "").trim().toLowerCase();
+  for (let i = 0; i < Math.min(10, aoa.length); i++) {
+    const row = (aoa[i] || []).map(norm);
+    const hasFahrzeug = row.some(c => c.includes("fahrzeug"));
+    const hasDienstposten = row.some(c => c.includes("dienstposten"));
+    const hasBemerkung = row.some(c => c.includes("bemerkung"));
+    if (hasFahrzeug && hasDienstposten && hasBemerkung) return true;
+  }
+  return false;
+}
 
 
-// #region Tabelle → Array & Helfer für Export
+function parseMonthYearFromSheetName(name) {
+  if (!name) return null;
+  let s = String(name).toLowerCase();
+  try { s = s.normalize('NFD').replace(/\p{Diacritic}/gu, ''); } catch { }
+  const months = [
+    ['jan', 'januar'],
+    ['feb', 'februar'],
+    ['maer', 'maerz', 'marz', 'mar', 'mär'],
+    ['apr', 'april'],
+    ['mai', 'may'],
+    ['jun', 'juni'],
+    ['jul', 'juli'],
+    ['aug', 'august'],
+    ['sep', 'sept', 'september'],
+    ['okt', 'oct', 'oktober', 'october'],
+    ['nov', 'november'],
+    ['dez', 'dec', 'dezember', 'december'],
+  ];
 
+  const ym = s.match(/\b(19|20)\d{2}\b/);
+  if (!ym) return null;
+  const year = parseInt(ym[0], 10);
+
+  let monthIndex = null;
+  for (let i = 0; i < months.length; i++) {
+    if (months[i].some(tok => s.includes(tok))) { monthIndex = i; break; }
+  }
+  if (monthIndex == null) {
+    const mNum = s.match(/\b(0?[1-9]|1[0-2])\b/);
+    if (mNum) monthIndex = parseInt(mNum[1], 10) - 1;
+  }
+  if (monthIndex == null) return null;
+
+  return { year, monthIndex };
+}
+
+
+
+
+//#endregion
+
+
+
+// #region Excel-Export
+
+ //Hilfsfunktionen nur für den Excel-Export
 function tabelleAlsArray() {
   const tbody = document.querySelector('#monatsTabelle tbody');
   const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -968,37 +1055,22 @@ function renderMonthOffscreen(y, m) {
   return { tbody: tb, cleanup: () => wrapper.remove() };
 }
 
-// #endregion
-
-
-// #region Excel: Shared Builder (identische Optik für Export & Backup)
-
-function monthNamesDE() {
-  return ["Januar", "Februar", "März", "April", "Mai", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "Dezember"];
-}
-
-function styleHeaderRowExcel(ws, rowIdx, blueHeader) {
-  ws.getRow(rowIdx).eachCell(c => {
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blueHeader } };
-    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    c.alignment = { horizontal: "center", vertical: "middle" };
-    c.border = {
-      top: { style: "thin" }, left: { style: "thin" },
-      bottom: { style: "thin" }, right: { style: "thin" }
-    };
-  });
-}
-
-/** Baut EIN Monats-Blatt exakt wie im normalen Export */
-async function buildWorkbookForMonthFromDOM(jahr, monat) {
-  if (typeof ExcelJS === 'undefined') throw new Error('ExcelJS ist nicht geladen.');
+ //Einzelmonat exportieren
+async function exportMitExcelJS() {
+  if (typeof ExcelJS === 'undefined') {
+    alert('ExcelJS ist nicht geladen.');
+    return;
+  }
 
   const wb = new ExcelJS.Workbook();
-  const monate = monthNamesDE();
 
-  const blueHeader = "FF2F75B5";   // ARGB
-  const zebraARGB  = "FFF2F2F2";   // ARGB
+  const jahr = parseInt(document.getElementById('jahr').value, 10);
+  const monat = parseInt(document.getElementById('monat').value, 10);
+  const monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+    "August", "September", "Oktober", "November", "Dezember"];
+
+  const blueHeader = "2F75B5";
+  const zebraARGB = "F2F2F2";
   const weekendARGB = "FFF6DFD1";
   const holidayARGB = "FFDFEEDD";
 
@@ -1007,7 +1079,7 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
     pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true }
   });
 
-  // Titel wie im Export
+  // Titel
   const titel = `Tabelle für ${monate[monat]} ${jahr}`;
   ws.spliceRows(1, 0, [titel]);
   ws.mergeCells(1, 1, 1, 9);
@@ -1018,9 +1090,14 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
 
   // Kopf
   ws.addRow(["Tag", "Fahrzeug", "Dienstposten", "Ort", "Von", "Bis", "Bemerkung", "eingetragen"]);
-  styleHeaderRowExcel(ws, 2, blueHeader);
+  ws.getRow(2).eachCell(c => {
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blueHeader } };
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.alignment = { horizontal: "center", vertical: "middle" };
+    c.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+  });
 
-  // Spaltenbreiten + Legende-Spalten (GENAU wie im Export)
+  // Spaltenbreiten + Legende-Spalten
   ws.columns = [
     { width: 25 }, // A Datum
     { width: 12 }, // B Fahrzeug
@@ -1030,18 +1107,14 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
     { width: 12 }, // F Bis
     { width: 40 }, // G Bemerkung
     { width: 16 }, // H eingetragen
-    { width: 2 }, // I Spacer
+    { width: 2 },  // I Spacer
     { width: 14 }, // J Legende: ID
     { width: 28 }, // K Legende: Fahrzeugname
   ];
 
-  // Daten AUS DEM DOM (wie exportMitExcelJS)
-  const { tbody, cleanup } = renderMonthOffscreen(jahr, monat);
-  const aoa = tabelleAlsArrayFromTbody(tbody);
-  const rows = aoa.slice(1);
-  cleanup();
+  const aoa = tabelleAlsArray(); // inkl. Datumstext
+  const raw = aoa.slice(1);
 
-  // rowsPerDay bestimmen wie im Export
   let rowsPerDay = FAHRZEUGE.length || 1;
   const firstDateCell = document.querySelector('#monatsTabelle tbody tr td[rowspan]');
   if (firstDateCell) {
@@ -1049,8 +1122,7 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
     if (!Number.isNaN(rs) && rs > 0) rowsPerDay = rs;
   }
 
-  // evtl. numerische Fahrzeug-IDs als Zahl schreiben – wie Export
-  const dataOnly = rows.map(r => {
+  const dataOnly = raw.map(r => {
     const asNum = Number(String(r[1]).trim().replace(',', '.'));
     const fahrzeug = Number.isFinite(asNum) ? asNum : r[1];
     return [r[0], fahrzeug, r[2], r[3], r[4], r[5], r[6], r[7]];
@@ -1061,20 +1133,18 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
   const startDataRow = 3;
   const endDataRow = ws.lastRow.number;
   for (let r = startDataRow; r <= endDataRow; r++) {
-    ws.getRow(r).eachCell({ includeEmpty: true }, cell => {
-      cell.border = {
-        top: { style: "thin" }, left: { style: "thin" },
-        bottom: { style: "thin" }, right: { style: "thin" }
-      };
+    const row = ws.getRow(r);
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
     });
     if ((r - startDataRow) % 2 === 1) {
-      ws.getRow(r).eachCell({ includeEmpty: true }, cell => {
+      row.eachCell({ includeEmpty: true }, cell => {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: zebraARGB } };
       });
     }
   }
 
-  // Tag-Blöcke mergen + WE/Feiertag färben
+  // Tag-Blöcke mergen + WE/Feiertags-Färbung
   const tageImMonat = new Date(jahr, monat + 1, 0).getDate();
   for (let blockStart = 0, day = 1; day <= tageImMonat; day++, blockStart += rowsPerDay) {
     const excelStart = startDataRow + blockStart;
@@ -1102,15 +1172,19 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
         }
       }
     }
+    for (let rr = excelStart; rr <= excelEnd; rr++) {
+      ws.getRow(rr).getCell(1).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    }
   }
 
-  // Rechte Legende (WE/Feiertag + Fahrzeugliste)
+  // Rechte Legende: nur Fahrzeugliste (ID + Name) + Farberklärung WE/Feiertag
   (function addRightLegend() {
     const idCol = 10, nameCol = 11, headRow = 2;
+
     ws.getCell(headRow, idCol).value = "Wochenende";
     ws.getCell(headRow + 1, idCol).value = "Feiertag";
-    ws.getCell(headRow, nameCol).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: weekendARGB } };
-    ws.getCell(headRow + 1, nameCol).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: holidayARGB } };
+    ws.getCell(headRow, nameCol).fill = { type: "pattern", pattern: "solid", fgColor: { argb: weekendARGB } };
+    ws.getCell(headRow + 1, nameCol).fill = { type: "pattern", pattern: "solid", fgColor: { argb: holidayARGB } };
     ws.getCell(headRow, nameCol).border = ws.getCell(headRow + 1, nameCol).border =
       { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
 
@@ -1136,71 +1210,6 @@ async function buildWorkbookForMonthFromDOM(jahr, monat) {
     }
   })();
 
-  return wb;
-}
-
-/** Baut 12 Monats-Blätter (Jahr) exakt wie im normalen Export */
-async function buildWorkbookForYearFromDOM(jahr) {
-  if (typeof ExcelJS === 'undefined') throw new Error('ExcelJS ist nicht geladen.');
-  const wb = new ExcelJS.Workbook();
-
-  for (let m = 0; m < 12; m++) {
-    const sub = await buildWorkbookForMonthFromDOM(jahr, m);
-    const src = sub.worksheets[0];
-
-    // Zielblatt mit denselben Basiseinstellungen
-    const dst = wb.addWorksheet(src.name, {
-      properties: src.properties,
-      pageSetup: src.pageSetup
-    });
-
-    // Spaltenbreiten kopieren
-    if (src.columns && src.columns.length) {
-      dst.columns = src.columns.map(col => ({ width: col.width }));
-    }
-
-    // Zeilen + Zellen kopieren (Werte + Styles)
-    src.eachRow({ includeEmpty: true }, (row, r) => {
-      const newRow = dst.getRow(r);
-      if (row.height) newRow.height = row.height;
-
-      row.eachCell({ includeEmpty: true }, (cell, c) => {
-        const n = newRow.getCell(c);
-        n.value = cell.value;
-        if (cell.style) n.style = { ...cell.style };
-        if (cell.font) n.font = { ...cell.font };
-        if (cell.alignment) n.alignment = { ...cell.alignment };
-        if (cell.fill) n.fill = { ...cell.fill };
-        if (cell.border) n.border = { ...cell.border };
-        if (cell.numFmt) n.numFmt = cell.numFmt;
-      });
-
-      newRow.commit?.();
-    });
-
-    // Merge-Bereiche kopieren
-    if (src._merges && src._merges.size) {
-      for (const range of src._merges) {
-        dst.mergeCells(range);
-      }
-    }
-  }
-
-  return wb;
-}
-
-
-// #endregion
-
-
-
-// #region Excel-Export: Einzelmonat
-
-async function exportMitExcelJS() {
-  const jahr = parseInt(document.getElementById('jahr').value, 10);
-  const monat = parseInt(document.getElementById('monat').value, 10);
-  const monate = monthNamesDE();
-  const wb = await buildWorkbookForMonthFromDOM(jahr, monat);
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const a = document.createElement("a");
@@ -1210,14 +1219,145 @@ async function exportMitExcelJS() {
   URL.revokeObjectURL(a.href);
 }
 
-// #endregion
-
-
-// #region Excel-Export: Jahresdatei (DOM-Mirror pro Monat)
+// Ganzes Jahr (12 Blätter) exportieren – DOM-Mirror
 
 async function exportYearWithExcelJS_DOMMirror() {
-  const jahr = parseInt(document.getElementById('jahr').value, 10) || (getTodayDate()).getFullYear();
-  const wb = await buildWorkbookForYearFromDOM(jahr);
+  if (typeof ExcelJS === 'undefined') {
+    alert('ExcelJS ist nicht geladen.');
+    return;
+  }
+
+  const wb = new ExcelJS.Workbook();
+  const jahr = parseInt(document.getElementById('jahr').value, 10) || (new Date()).getFullYear();
+  const monate = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+    "August", "September", "Oktober", "November", "Dezember"];
+
+  const blueHeader = "2F75B5", zebraARGB = "F2F2F2", weekendARGB = "FFF6DFD1", holidayARGB = "FFDFEEDD";
+
+  const styleHeaderRow = (ws, rowIdx) =>
+    ws.getRow(rowIdx).eachCell(c => {
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blueHeader } };
+      c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      c.alignment = { horizontal: "center", vertical: "middle" };
+      c.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    });
+
+  for (let monat = 0; monat < 12; monat++) {
+    const { tbody, cleanup } = renderMonthOffscreen(jahr, monat);
+    const aoa = tabelleAlsArrayFromTbody(tbody);
+    const data = aoa.slice(1);
+    const rpdAr = rowsPerDayArrayFromDOM(tbody);
+    const tageImMonat = new Date(jahr, monat + 1, 0).getDate();
+
+    const offsets = rpdAr.reduce((acc, n, i) => {
+      acc.push((acc[i - 1] ?? 0) + (rpdAr[i - 1] ?? 0));
+      return acc;
+    }, []);
+
+    const ws = wb.addWorksheet(`${monate[monat]} ${jahr}`, {
+      properties: { defaultRowHeight: 18 },
+      pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true }
+    });
+
+    const titel = `Tabelle für ${monate[monat]} ${jahr}`;
+    ws.spliceRows(1, 0, [titel]); ws.mergeCells(1, 1, 1, 9);
+    const tcell = ws.getCell('A1');
+    tcell.font = { bold: true, size: 16 };
+    tcell.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws.getRow(1).height = 24;
+
+    ws.addRow(["Tag", "Fahrzeug", "Dienstposten", "Ort", "Von", "Bis", "Bemerkung", "eingetragen"]);
+    styleHeaderRow(ws, 2);
+
+    ws.columns = [
+      { width: 25 }, { width: 12 }, { width: 18 }, { width: 22 },
+      { width: 12 }, { width: 12 }, { width: 40 }, { width: 16 },
+      { width: 2 }, { width: 14 }, { width: 28 }
+    ];
+
+    ws.addRows(data);
+
+    const startDataRow = 3;
+    const endDataRow = ws.lastRow.number;
+    for (let r = startDataRow; r <= endDataRow; r++) {
+      ws.getRow(r).eachCell({ includeEmpty: true }, cell => {
+        cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      });
+      if ((r - startDataRow) % 2 === 1) {
+        ws.getRow(r).eachCell({ includeEmpty: true }, cell => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: zebraARGB } };
+        });
+      }
+    }
+
+    for (let day = 1; day <= tageImMonat; day++) {
+      const rpd = rpdAr[day - 1] ?? 1;
+      const excelStart = startDataRow + (offsets[day - 1] || 0);
+      const excelEnd = Math.min(excelStart + rpd - 1, endDataRow);
+      if (excelStart > endDataRow) break;
+
+      ws.mergeCells(excelStart, 1, excelEnd, 1);
+
+      const master = ws.getRow(excelStart).getCell(1);
+      if (!master.value) {
+        const dObj = new Date(jahr, monat, day);
+        const dateText = dObj.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+        master.value = { richText: [{ text: dateText }] };
+      }
+      master.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+
+      const dObj = new Date(jahr, monat, day);
+      const isWeekend = dObj.getDay() === 0 || dObj.getDay() === 6;
+      const holiday = feiertagsNameFür(dObj);
+      if (isWeekend || holiday) {
+        const color = holiday ? holidayARGB : weekendARGB;
+        for (let rr = excelStart; rr <= excelEnd; rr++) {
+          for (let c = 1; c <= 8; c++) {
+            ws.getRow(rr).getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color } };
+          }
+        }
+      }
+      for (let rr = excelStart; rr <= excelEnd; rr++) {
+        ws.getRow(rr).getCell(1).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      }
+    }
+
+    // rechte Legende je Monat
+    (function addLegends() {
+      const idCol = 10, nameCol = 11, headRow = 2;
+
+      ws.getCell(headRow, idCol).value = "Wochenende";
+      ws.getCell(headRow + 1, idCol).value = "Feiertag";
+      ws.getCell(headRow, nameCol).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: weekendARGB } };
+      ws.getCell(headRow + 1, nameCol).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: holidayARGB } };
+      ws.getCell(headRow, nameCol).border = ws.getCell(headRow + 1, nameCol).border =
+        { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+
+      const startRow = headRow + 3;
+      ws.getCell(startRow, idCol).value = "ID";
+      ws.getCell(startRow, nameCol).value = "Fahrzeugname";
+      [ws.getCell(startRow, idCol), ws.getCell(startRow, nameCol)].forEach(c => {
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: blueHeader } };
+        c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        c.alignment = { horizontal: "center", vertical: "middle" };
+        c.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      });
+
+      let r = startRow + 1;
+      const ordered = [...FAHRZEUGE].sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
+      for (const id of ordered) {
+        ws.getCell(r, idCol).value = id;
+        ws.getCell(r, idCol).border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+        const cell = ws.getCell(r, nameCol);
+        cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+        cell.value = FAHRZEUGNAMEN[id] || '';
+        r++;
+      }
+    })();
+
+    cleanup();
+  }
+
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const a = document.createElement("a");
@@ -1226,267 +1366,70 @@ async function exportYearWithExcelJS_DOMMirror() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-const exportYearWithExcelJS = exportYearWithExcelJS_DOMMirror;
+
 
 // #endregion
 
 
-// #region Excel: Fahrzeugliste aus Workbook extrahieren
 
-function extractVehicleList_OWN(aoa) {
-  const rows = aoa.length;
-  const cols = Math.max(...aoa.map(r => r.length)) || 0;
+// #region Speichern (Tabelle → localStorage)
 
-  const norm = v => String(v ?? '').trim().toLowerCase();
+function speichereDaten(jahr, monat) {
+  const tbody = document.querySelector('#monatsTabelle tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
 
-  let minCol = 0;
-  outer:
-  for (let r = 0; r < Math.min(rows, 20); r++) {
-    for (let c = 0; c < cols; c++) {
-      const v = norm(aoa[r]?.[c]);
-      if (v === 'wochenende' || v === 'feiertag') {
-        minCol = Math.max(minCol, c);
-        break outer;
-      }
+  const tageImMonat = new Date(jahr, monat + 1, 0).getDate();
+  const meta = ladeMeta(jahr, monat);
+
+  let STORAGE_RPD = parseInt(meta?.rowsPerDay, 10);
+  if (!Number.isFinite(STORAGE_RPD) || STORAGE_RPD < MIN_ZEILEN_PRO_TAG || STORAGE_RPD > MAX_ZEILEN_PRO_TAG) {
+    const existing = ladeDaten(jahr, monat) || [];
+    if (existing.length) {
+      STORAGE_RPD = Math.max(
+        MIN_ZEILEN_PRO_TAG,
+        Math.min(MAX_ZEILEN_PRO_TAG, Math.round(existing.length / Math.max(1, tageImMonat)))
+      );
+    } else {
+      STORAGE_RPD = Math.min(Math.max((FAHRZEUGE.length || ZEILEN_PRO_TAG || 1), MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
     }
   }
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = Math.max(0, minCol); c < cols - 1; c++) {
-      const a = norm(aoa[r]?.[c]);
-      const b = norm(aoa[r]?.[c + 1]);
-      if ((a === 'id') && (b === 'fahrzeugname' || b === 'fahrzeug')) {
-        const out = [];
-        for (let rr = r + 1; rr < rows; rr++) {
-          const rawId = String(aoa[rr]?.[c] ?? '').trim();
-          const name = String(aoa[rr]?.[c + 1] ?? '').trim();
-          if (!rawId && !name) break;
+  const daten = [];
+  let ptr = 0;
 
-          if (/^\d{2,4}$/.test(rawId) && name) {
-            out.push({ id: rawId.replace(/^0+/, ''), name });
-          } else if (!rawId && name) {
-            break;
-          }
-        }
-        return out;
-      }
-    }
-  }
-  return [];
-}
+  for (let day = 1; day <= tageImMonat; day++) {
+    const rpdToday = LAST_RPD_PER_DAY[day] || 1;
+    const maxRows = Math.min(rpdToday, STORAGE_RPD);
 
-function extractVehicleList_FALLBACK(aoa) {
-  const rows = aoa.length;
-  const cols = Math.max(...aoa.map(r => r.length)) || 0;
+    for (let r = 0; r < maxRows; r++) {
+      const tr = rows[ptr++];
+      const zeile = [];
+      const tds = Array.from(tr.querySelectorAll('td'));
+      const fahrzeugTd = tds.length === 8 ? tds[1] : tds[0];
+      const id = fahrzeugTd.querySelector('span')?.textContent?.trim()
+        || fahrzeugTd.querySelector('input[type="hidden"]')?.value?.trim() || '';
+      zeile.push(id);
 
-  const isId = (v) => /^\s*\d{2,4}\s*$/.test(String(v ?? ''));
-  const isText = (v) => String(v ?? '').trim().length > 0;
-
-  let best = [];
-  for (let c = 0; c < cols - 1; c++) {
-    let block = [];
-    let started = false;
-
-    for (let r = 0; r < Math.min(rows, 1000); r++) {
-      const left = aoa[r]?.[c];
-      const right = aoa[r]?.[c + 1];
-
-      if (isId(left) && isText(right)) {
-        block.push({ id: String(left).trim().replace(/^0+/, ''), name: String(right).trim() });
-        started = true;
-        if (block.length >= 150) break;
-      } else {
-        if (started) break;
-      }
+      tr.querySelectorAll('input[type="text"],input[type="time"]').forEach(inp => zeile.push(inp.value ?? ''));
+      while (zeile.length < 7) zeile.push('');
+      daten.push(zeile);
     }
 
-    if (block.length >= 2 && block.length > best.length) {
-      best = block;
+    for (let r = maxRows; r < STORAGE_RPD; r++) {
+      daten.push(['', '', '', '', '', '', '']);
     }
-  }
-  return best;
-}
 
-function collectVehiclesFromWorkbook(wb) {
-  const ids = new Set();
-  const looksLikeId = v => /^\s*\d{2,4}\s*$/.test(String(v ?? ''));
-  const norm = s => String(s ?? '').trim().toLowerCase();
-
-  for (const sheetName of wb.SheetNames || []) {
-    const ws = wb.Sheets[sheetName];
-    if (!ws) continue;
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || [];
-    if (!aoa.length) continue;
-
-    const headerRow = aoa.find(r => Array.isArray(r) && r.some(c => norm(c) === 'fahrzeug'));
-    if (!headerRow) continue;
-    const hdrIdx = aoa.indexOf(headerRow);
-    const colFzg = headerRow.findIndex(c => norm(c) === 'fahrzeug');
-    if (colFzg < 0) continue;
-
-    for (let r = hdrIdx + 1; r < aoa.length; r++) {
-      const v = aoa[r]?.[colFzg];
-      if (looksLikeId(v)) ids.add(String(v).trim().replace(/^0+/, ''));
-    }
-  }
-  return Array.from(ids).sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
-}
-
-
-function saveVehicleState() {
-  try {
-    lsSetJson(FAHRZEUGE_KEY, FAHRZEUGE);
-    lsSetJson(FAHRZEUGNAMEN_KEY, FAHRZEUGNAMEN);
-  } catch { }
-}
-
-(function restoreVehicleState() {
-  try {
-    const f = lsGetJson(FAHRZEUGE_KEY, null);
-    if (Array.isArray(f) && f.length) FAHRZEUGE = f;
-
-    const n = lsGetJson(FAHRZEUGNAMEN_KEY, null);
-    if (n && typeof n === 'object') FAHRZEUGNAMEN = n;
-
-    ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-  } catch { }
-})();
-
-
-
-function applyVehicleListFromWorkbook(wb) {
-  for (const name of wb.SheetNames || []) {
-    const ws = wb.Sheets[name];
-    if (!ws) continue;
-    const listOwn = extractVehicleList_OWN(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || []);
-    if (listOwn.length) {
-      FAHRZEUGE = listOwn.map(x => x.id);
-      FAHRZEUGNAMEN = {};
-      for (const { id, name } of listOwn) FAHRZEUGNAMEN[id] = name;
-      saveVehicleState();
-      ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-      return true;
-    }
+    for (let r = STORAGE_RPD; r < rpdToday; r++) ptr++;
   }
 
-  for (const name of wb.SheetNames || []) {
-    const ws = wb.Sheets[name];
-    if (!ws) continue;
-    const list = extractVehicleList_FALLBACK(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || []);
-    if (list.length) {
-      FAHRZEUGE = list.map(x => x.id);
-      FAHRZEUGNAMEN = {};
-      for (const { id, name } of list) FAHRZEUGNAMEN[id] = name;
-      saveVehicleState();
-      ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-      return true;
-    }
-  }
-
-  const ids = collectVehiclesFromWorkbook(wb);
-  if (ids.length) {
-    FAHRZEUGE = ids;
-    FAHRZEUGNAMEN = FAHRZEUGNAMEN || {};
-    saveVehicleState();
-    ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-    return true;
-  }
-
-  return false;
-}
-
-// #endregion
-
-
-// #region Excel: Import-Controller
-
-async function importAllMonthYearSheets(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true, cellNF: true, cellText: false });
-
-  // Fahrzeugliste (optional) ziehen
-  applyVehicleListFromWorkbook(wb);
-  ZEILEN_PRO_TAG = Math.min(Math.max(FAHRZEUGE.length, MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
-
-  const imported = [];
-  const skippedNoHeader = [];
-  const skippedNoMY = [];
-
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName];
-    if (!ws) continue;
-
-    const my = parseMonthYearFromSheetName(sheetName);
-    if (!my) { skippedNoMY.push(sheetName); continue; }
-
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) || [];
-    if (!hasExpectedHeader(aoa)) { skippedNoHeader.push(sheetName); continue; }
-
-    parseSheetToStorage(ws, my.year, my.monthIndex);
-    imported.push({ name: sheetName, ...my });
-  }
-
-  if (imported.length) {
-    const first = imported[0];
-    document.getElementById('jahr').value = first.year;
-    document.getElementById('monat').value = first.monthIndex;
-  }
-
-  // UI refresh
-  aktualisieren();
-  updateExportButtonLabel();
-  renderFahrzeugLegende();
-  reflowRightRail?.();
-
-  // Zusätzlich: aktuelle Auswahl explizit neu rendern
-  const curYear = parseInt(document.getElementById('jahr').value, 10) || (getTodayDate()).getFullYear();
-  const curMonth = parseInt(document.getElementById('monat').value, 10) || 0;
-  tabelleErstellen(curYear, curMonth);
-  renderFahrzeugLegende();
-  reflowRightRail?.();
-}
-
-function parseMonthYearFromSheetName(name) {
-  if (!name) return null;
-  let s = String(name).toLowerCase();
-  try { s = s.normalize('NFD').replace(/\p{Diacritic}/gu, ''); } catch { }
-  const months = [
-    ['jan', 'januar'],
-    ['feb', 'februar'],
-    ['maer', 'maerz', 'marz', 'mar', 'mär'],
-    ['apr', 'april'],
-    ['mai', 'may'],
-    ['jun', 'juni'],
-    ['jul', 'juli'],
-    ['aug', 'august'],
-    ['sep', 'sept', 'september'],
-    ['okt', 'oct', 'oktober', 'october'],
-    ['nov', 'november'],
-    ['dez', 'dec', 'dezember', 'december'],
-  ];
-
-  const ym = s.match(/\b(19|20)\d{2}\b/);
-  if (!ym) return null;
-  const year = parseInt(ym[0], 10);
-
-  let monthIndex = null;
-  for (let i = 0; i < months.length; i++) {
-    if (months[i].some(tok => s.includes(tok))) { monthIndex = i; break; }
-  }
-  if (monthIndex == null) {
-    const mNum = s.match(/\b(0?[1-9]|1[0-2])\b/);
-    if (mNum) monthIndex = parseInt(mNum[1], 10) - 1;
-  }
-  if (monthIndex == null) return null;
-
-  return { year, monthIndex };
+  localStorage.setItem(speicherKey(jahr, monat), JSON.stringify(daten));
 }
 
 // #endregion
 
 
 
-// #region Lock/Unlock (UI, kein echter Schutz)
+// #region Lock/Unlock 
 
 function setDisabledState(gesperrt) {
   document.querySelectorAll('#monatsTabelle input').forEach(inp => inp.disabled = gesperrt);
@@ -1614,606 +1557,543 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-// #region Synchronisieren mit alln Benutzern
+// #region Fahrzeug-hinzufügen oder entfernen
 
+// -- Helfer -------------------------------------------------------------------
+const _fz_formatDE = (d) =>
+  `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 
-
-
-async function ensureLibs({ needXLSX = false, needExcelJS = false } = {}) {
-  const deadline = Date.now() + 10000; // 10s
-  while (true) {
-    const ok = (!needXLSX || !!window.XLSX) && (!needExcelJS || !!window.ExcelJS);
-    if (ok) return;
-    if (Date.now() > deadline) throw new Error('Bibliotheken nicht geladen (XLSX/ExcelJS).');
-    await new Promise(r => setTimeout(r, 50));
-  }
-}
-
-
-
-
-
-
-// #region Auto-Import: neuestes Backup beim Laden --------------------------------
-
-/** yyyy und (optional) mm aus Dateiname wie
- *  "Monatstabelle-AlleMonate-2026-....xlsx"  oder
- *  "Monatstabelle-2025-10-....xlsx"
- */
-function _parseYearMonthFromBackupName(name) {
-  const mYearAll = name.match(/AlleMonate-(20\d{2})/i);
-  if (mYearAll) return { year: parseInt(mYearAll[1], 10), month: -1 };
-  const mYearMon = name.match(/Monatstabelle-(20\d{2})-(0[1-9]|1[0-2])/i);
-  if (mYearMon) return { year: parseInt(mYearMon[1], 10), month: parseInt(mYearMon[2], 10) - 1 };
+// ISO + deutsch (25.02.2025) erlauben
+const _fz_parseDateFlex = (s) => {
+  if (!s) return null;
+  const str = String(s).trim();
+  // ISO: 2025-03-09
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  // Deutsch: 09.03.2025 (führende Nullen optional)
+  m = /^(0?[1-9]|[12]\d|3[01])\.(0?[1-9]|1[0-2])\.(\d{4})$/.exec(str);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
   return null;
-}
+};
 
-/** Neueste .xlsx im gespeicherten Ordner finden (still) und importieren.
- *  Gibt true zurück, wenn etwas importiert wurde.
- */
-async function autoImportLatestBackup() {
-  try {
-    const dirHandle = await idbGet('sharedBackupDir');
-    if (!dirHandle) { console.info('[autoImport] kein Ordner gespeichert'); return false; }
+// Freundlicher Parser: nimmt Text, Array aus Strings oder bereits Objekte
+function _fz_normalizeChanges(raw) {
+  if (!raw) return [];
+  // Bereits Objekt-Form?
+  if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object') return raw;
 
-    let perm = 'granted';
-    if (dirHandle.queryPermission) perm = await dirHandle.queryPermission({ mode: 'read' });
-    console.info('[autoImport] queryPermission:', perm);
-
-    // Ohne User-Geste wird requestPermission oft ignoriert → nicht hier versuchen.
-    if (perm !== 'granted') {
-      // UI-Hinweis anzeigen (Button klickbar machen)
-      document.getElementById('backupFolderHint')?.classList.add('need-permission');
-      console.info('[autoImport] keine Leserechte – zeige Hinweis/Button an');
-      return false;
-    }
-
-    const files = [];
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind !== 'file' || !/\.xlsx?$/i.test(name)) continue;
-      const f = await handle.getFile();
-      files.push({ name, file: f, ts: f.lastModified });
-    }
-    if (!files.length) { console.info('[autoImport] kein .xlsx gefunden'); return false; }
-
-    files.sort((a, b) => b.ts - a.ts);
-    const latest = files[0];
-    console.info('[autoImport] importiere:', latest.name);
-
-    await ensureLibs({ needXLSX: true });
-    await importAllMonthYearSheets(latest.file);
-    return true;
-  } catch (err) {
-    console.warn('[autoImport] Fehler:', err);
-    return false;
+  // Text → Zeilen oder Array aus Strings
+  let lines = [];
+  if (typeof raw === 'string') {
+    lines = raw.split(/\r?\n/);
+  } else if (Array.isArray(raw)) {
+    lines = raw.map(String);
+  } else {
+    return [];
   }
-}
 
+  const out = [];
+  for (const line of lines) {
+    const s = String(line).trim();
+    if (!s || s.startsWith('#')) continue;
 
-/** Beim Start zuerst versuchen zu importieren, optional nur wenn STORE leer ist */
-async function autoImportOnLoad({ onlyIfStoreEmpty = true } = {}) {
-  const empty = STORE.byMonth.size === 0;
-  if (!onlyIfStoreEmpty || empty) {
-    const ok = await autoImportLatestBackup();
-    return ok;
-  }
-  return false;
-}
+    // Muster: <Datum> <Aktion> <ID> [Name...]
+    // Bsp.: 09.03.2025 hinzufügen 224 NEF 224
+    //       2025-05-15 remove 221
+    const m = s.match(
+      /^(\d{4}-\d{2}-\d{2}|(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.\d{4})\s+(hinzufügen|add|entfernen|remove)\s+(\d{2,4})(?:\s+(.*))?$/i
+    );
+    if (!m) continue;
 
-// #endregion -----------------------------------------------------------------
+    const [, dateStr, actRaw, idRaw, nameRaw] = m;
+    const date = _fz_parseDateFlex(dateStr);
+    const action = /hinzuf|add/i.test(actRaw) ? 'add' : 'remove';
+    const id = String(idRaw).replace(/^0+/, '');
+    const name = (nameRaw || '').trim();
 
-
-
-function idbSet(key, value) {
-  return new Promise((res, rej) => {
-    const req = indexedDB.open('shared-backup', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('kv');
-    req.onerror = () => rej(req.error);
-    req.onsuccess = () => {
-      const tx = req.result.transaction('kv', 'readwrite');
-      tx.objectStore('kv').put(value, key);
-      tx.oncomplete = () => res();
-      tx.onerror = () => rej(tx.error);
-    };
-  });
-}
-function idbGet(key) {
-  return new Promise((res, rej) => {
-    const req = indexedDB.open('shared-backup', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('kv');
-    req.onerror = () => rej(req.error);
-    req.onsuccess = () => {
-      const tx = req.result.transaction('kv', 'readonly');
-      const q = tx.objectStore('kv').get(key);
-      q.onsuccess = () => res(q.result ?? null);
-      q.onerror = () => rej(q.error);
-    };
-  });
-}
-
-
-
-
-async function autoRestoreFromSharedFolder() {
-  try {
-    const dirHandle = await idbGet('sharedBackupDir'); // zuvor via showDirectoryPicker gespeichert
-    if (!dirHandle) return;
-
-    // Berechtigung still prüfen/anfragen (funktioniert ohne User-Geste; zeigt evtl. Browser-Dialog)
-    const perm = await dirHandle.requestPermission?.({ mode: 'read' }) ?? 'granted';
-    if (perm !== 'granted') return; // kein stiller Zugriff möglich -> ggf. Button zeigen
-
-    // Neueste XLSX finden
-    const files = [];
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind !== 'file' || !/\.xlsx?$/i.test(name)) continue;
-      const f = await handle.getFile();
-      files.push({ name, file: f, ts: f.lastModified });
-    }
-    if (!files.length) return;
-
-    files.sort((a, b) => b.ts - a.ts);
-    await importAllMonthYearSheets(files[0].file);
-
-    aktualisieren?.();
-    afterRenderApply?.();
-    console.info('Auto-Import aus gemeinsamem Ordner:', files[0].name);
-  } catch (err) {
-    console.warn('Auto-Import (shared) fehlgeschlagen:', err);
-  }
-}
-//#endregion
-
-
-
-// #region Backup (Excel-Dateien in gemeinsamen Ordner erzeugen & wiederherstellen)
-
-// Wie viele Backups behalten?
-const BACKUP_KEEP = 10;
-
-/** Hinweistext rechts neben dem Button aktualisieren */
-async function renderBackupFolderHint(dirHandle) {
-  const span = document.getElementById('backupFolderHint');
-  if (!span) return;
-  try {
-    span.textContent = dirHandle ? `Backup-Ordner: ${dirHandle.name}` : '';
-  } catch {
-    span.textContent = '';
-  }
-}
-
-/** Ordner wählen & merken (in IndexedDB via idbSet) */
-async function pickSharedBackupFolder() {
-  try {
-    const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    const perm = await dirHandle.requestPermission?.({ mode: 'readwrite' }) ?? 'granted';
-    if (perm !== 'granted') {
-      alert('Keine Schreib-Berechtigung für den gewählten Ordner.');
-      return;
-    }
-    await idbSet('sharedBackupDir', dirHandle);
-    console.info('Backup-Ordner gespeichert:', dirHandle.name);
-  } catch (err) {
-    if (err?.name !== 'AbortError') {
-      console.error('Ordnerwahl fehlgeschlagen:', err);
-      alert('Ordnerwahl fehlgeschlagen: ' + (err?.message || err));
+    if (date && id) {
+      const obj = { date: dateStr, action, id };
+      if (name && action === 'add') obj.name = name;
+      out.push(obj);
     }
   }
+  return out;
 }
 
-/** Manuelles Wiederherstellen: neueste .xlsx aus Ordner importieren */
-async function manualRestoreFromSharedFolder() {
-  try {
-    const dirHandle = await idbGet('sharedBackupDir');
-    if (!dirHandle) {
-      alert('Kein Backup-Ordner gespeichert. Bitte zuerst „Backup-Ordner wählen“.');
-      return;
-    }
-    const perm = await dirHandle.requestPermission?.({ mode: 'read' }) ?? 'granted';
-    if (perm !== 'granted') {
-      alert('Keine Leserechte für den Backup-Ordner.');
-      return;
-    }
+// -- Konfig lesen (aus externer Datei via window.VEHICLE_CHANGES) ------------
+const VEHICLE_CHANGES = _fz_normalizeChanges(window.VEHICLE_CHANGES);
 
-    const files = [];
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind !== 'file' || !/\.xlsx?$/i.test(name)) continue;
-      const f = await handle.getFile();
-      files.push({ name, file: f, ts: f.lastModified });
-    }
-    if (!files.length) {
-      alert('Im Backup-Ordner wurden keine Excel-Dateien gefunden.');
-      return;
-    }
+// -- Sortiert & validiert (alt → neu) ---------------------------------------
+const _VEHICLE_CHANGES_SORTED = (VEHICLE_CHANGES || [])
+  .map(x => ({ ...x, _date: _fz_parseDateFlex(x.date) }))
+  .filter(x => x._date instanceof Date && !Number.isNaN(x._date.valueOf()))
+  .sort((a, b) => a._date - b._date);
 
-    files.sort((a, b) => b.ts - a.ts);
-    await importAllMonthYearSheets(files[0].file);
-    aktualisieren?.();
-    afterRenderApply?.();
-    alert(`Backup wiederhergestellt: ${files[0].name}`);
-  } catch (e) {
-    console.warn(e);
-    alert('Wiederherstellen fehlgeschlagen: ' + (e?.message || e));
+// -- Aktive Fahrzeuge für ein Datum -----------------------------------------
+function vehiclesForDate(d) {
+  let ids = Array.isArray(FAHRZEUGE) ? [...FAHRZEUGE] : [];
+  const names = { ...(FAHRZEUGNAMEN || {}) };
+
+  for (const ch of _VEHICLE_CHANGES_SORTED) {
+    if (ch._date > d) break;
+    const vid = String(ch.id);
+    if (ch.action === 'add') {
+      if (!ids.includes(vid)) ids.push(vid);
+      if (ch.name) names[vid] = ch.name;
+    } else if (ch.action === 'remove') {
+      ids = ids.filter(x => x !== vid);
+      delete names[vid]; // Konsistenz: evtl. gesetzten Namen ebenfalls entfernen
+    }
+  }
+
+  const rpd = Math.min(Math.max((ids.length || 1), MIN_ZEILEN_PRO_TAG), MAX_ZEILEN_PRO_TAG);
+  return { ids: ids.slice(0, rpd), names };
+}
+
+// -- Hilfen für Legende ------------------------------------------------------
+function _legendBaseDateFromSelection() {
+  const jahr = parseInt(document.getElementById('jahr')?.value, 10) || (new Date()).getFullYear();
+  const monat = parseInt(document.getElementById('monat')?.value, 10);
+  return (monat === -1)
+    ? { year: jahr, month: 0, isYear: true }
+    : { year: jahr, month: monat, isYear: false };
+}
+
+function _buildChangeNotesForLegend() {
+  const sel = _legendBaseDateFromSelection();
+  const notes = [];
+  for (const ch of _VEHICLE_CHANGES_SORTED) {
+    const y = ch._date.getFullYear();
+    const m = ch._date.getMonth();
+    const inScope = sel.isYear ? (y === sel.year) : (y === sel.year && m === sel.month);
+    if (!inScope) continue;
+
+    const label = (ch.action === 'add') ? 'hinzugefügt' : 'entfernt';
+    const nm = (ch.name || (FAHRZEUGNAMEN?.[ch.id]) || '').trim();
+    const who = nm ? `${ch.id} – ${nm}` : `${ch.id}`;
+    notes.push(`${who} ${label} am ${_fz_formatDE(ch._date)}`);
+  }
+  return notes;
+}
+
+// -- OVERRIDE: Legende -------------------------------------------------------
+// ersetzt die vorhandene Funktion vollständig
+function renderFahrzeugLegende() {
+  const box = document.getElementById('vehicleLegend');
+  if (!box) return;
+
+  const { year, month, isYear } = _legendBaseDateFromSelection();
+  const { ids, names } = vehiclesForDate(new Date(year, month, 1));
+  const ordered = [...ids].sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
+
+  const listRows = ordered.map(id => `
+    <div class="veh-legend-row">
+      <div class="veh-legend-id">${escapeText(id)}</div>
+      <div class="veh-legend-body">
+        <div class="veh-legend-head">
+          <div class="veh-legend-name">${escapeText(names[id] || '')}</div>
+        </div>
+        <div class="veh-meta muted"></div>
+      </div>
+    </div>
+  `).join('');
+
+  // Änderungs-Hinweise (nur in der Legende)
+  const notes = _buildChangeNotesForLegend();
+  const notesHtml = notes.length
+    ? `
+      <div class="veh-legend-changes" style="margin-top:12px;border-top:1px solid #ddd;padding-top:8px;">
+        <div class="muted" style="font-weight:600;margin-bottom:4px;">
+          Änderungen ${isYear ? `im Jahr ${year}` : `in diesem Monat`}
+        </div>
+        <ul style="margin:0;padding-left:18px;">
+          ${notes.map(n => `<li style="font-size:12px;color:#666;">${escapeText(n)}</li>`).join('')}
+        </ul>
+      </div>
+    `
+    : '';
+
+  box.innerHTML = `<h3>Fahrzeuge</h3><div class="veh-group">${listRows}</div>${notesHtml}`;
+  reflowRightRail?.();
+}
+
+// -- OVERRIDE: Tabelle erstellen --------------------------------------------
+// ersetzt die vorhandene Funktion vollständig
+function tabelleErstellen(jahr, monatIndex, targetTbody = null) {
+  const tbody = targetTbody || document.querySelector('#monatsTabelle tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const readOnlyMulti = !!targetTbody;
+  const tageImMonat = new Date(jahr, monatIndex + 1, 0).getDate();
+
+  // gespeicherte Monatsdaten blockweise (pro Tag) nach Fahrzeug-ID abbilden
+  const loadSavedRowsMapForDay = (j, m, day, dim) => {
+    const saved = ladeDaten(j, m) || [];
+    const meta = ladeMeta(j, m);
+    const tage = dim || new Date(j, m + 1, 0).getDate();
+
+    let savedRPD = parseInt(meta?.rowsPerDay, 10);
+    if (!Number.isFinite(savedRPD) || savedRPD < 1) {
+      savedRPD = Math.max(1, Math.round(saved.length / Math.max(1, tage)));
+    }
+    const start = (day - 1) * savedRPD;
+    const block = saved.slice(start, start + savedRPD);
+
+    const map = new Map();
+    for (const row of block) {
+      if (!row || !row.length) continue;
+      const id = String(row[0] ?? '').trim();
+      if (!id) continue;
+      map.set(id, [row[1] ?? '', row[2] ?? '', row[3] ?? '', row[4] ?? '', row[5] ?? '', row[6] ?? '']);
+    }
+    return map;
+  };
+
+  LAST_RPD_PER_DAY = [];
+  let zeilenIndexGlobal = 0;
+
+  for (let tag = 1; tag <= tageImMonat; tag++) {
+    const datum = new Date(jahr, monatIndex, tag);
+    const datumText = datum.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+    const feiertagName = feiertagsNameFür(datum);
+
+    // Tages-Fahrzeugliste laut Zeitachse
+    const { ids: dayVehicles, names: dayNames } = vehiclesForDate(datum);
+    const rpdToday = Math.max(MIN_ZEILEN_PRO_TAG, dayVehicles.length || 1);
+    LAST_RPD_PER_DAY[tag] = rpdToday;
+
+    const savedMap = loadSavedRowsMapForDay(jahr, monatIndex, tag, tageImMonat);
+
+    for (let zeile = 0; zeile < rpdToday; zeile++) {
+      const tr = document.createElement('tr');
+
+      if (feiertagName) tr.classList.add('feiertag');
+      if (datum.getDay() === 0 || datum.getDay() === 6) tr.classList.add('weekend');
+      if (!tr.classList.contains('weekend') && !tr.classList.contains('feiertag') && (zeile % 2 === 1)) {
+        tr.classList.add('row-alt');
+      }
+
+      // Datumsspalte (gemergt)
+      if (zeile === 0) {
+        tr.classList.add('first-of-day');
+
+        const tdDate = document.createElement('td');
+        tdDate.classList.add('col-datum');
+
+        const wrap = document.createElement('div');
+        const dt = document.createElement('div');
+        dt.className = 'datum-text';
+        const datumTextFormatted = datumText.charAt(0).toUpperCase() + datumText.slice(1);
+        dt.textContent = datumTextFormatted;
+        wrap.appendChild(dt);
+        if (feiertagName) {
+          const fh = document.createElement('div');
+          fh.className = 'feiertag-name';
+          fh.textContent = feiertagName;
+          wrap.appendChild(fh);
+        }
+        tdDate.appendChild(wrap);
+        tdDate.rowSpan = rpdToday;
+        tr.appendChild(tdDate);
+      }
+
+      // restliche Spalten
+      for (let i = 0; i < 7; i++) {
+        const colKey = COLS[i]; // 'fahrzeug' | 'dienstposten' | 'ort' | 'von' | 'bis' | 'bemerkung' | 'eingetragen'
+        const td = document.createElement('td');
+        td.classList.add(`col-${colKey}`);
+        td.dataset.colKey = colKey;
+
+        if (colKey === 'fahrzeug') {
+          td.classList.add('text-center');
+
+          const id = dayVehicles[zeile] || '';
+          const label = document.createElement('span');
+          label.textContent = id;
+          label.style.fontWeight = 'bold';
+          if (id) {
+            const t = (dayNames && dayNames[id]) || (FAHRZEUGNAMEN && FAHRZEUGNAMEN[id]) || '';
+            if (t) label.title = t;
+          }
+          td.appendChild(label);
+
+          if (!readOnlyMulti) {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.value = id;
+            td.appendChild(hidden);
+          }
+        } else {
+          const idForRow = dayVehicles[zeile] || '';
+          const savedFields = (savedMap.get(idForRow) || ['', '', '', '', '', '']);
+          const fieldIndex = i - 1;
+          const vorbefuellt = (fieldIndex >= 0 ? savedFields[fieldIndex] : '') || '';
+
+          if (readOnlyMulti) {
+            const div = document.createElement('div');
+            div.className = 'ro';
+            div.textContent = vorbefuellt;
+            td.appendChild(div);
+          } else {
+            let inputEl;
+            if (typeof makeInput === 'function') {
+              inputEl = makeInput(colKey, vorbefuellt);
+            } else {
+              inputEl = document.createElement('input');
+              inputEl.type = 'text';
+              inputEl.maxLength = INPUT_MAX[colKey] ?? 10;
+              inputEl.value = vorbefuellt;
+            }
+            inputEl.classList.add('cell-input', `cell-${colKey}`);
+            inputEl.dataset.orig = vorbefuellt;
+            inputEl.dataset.row = zeilenIndexGlobal;
+            inputEl.dataset.col = i;
+            inputEl.addEventListener('input', () => {
+              if (bearbeitungGesperrt) return;
+              setUnsaved(true);
+              updateChangedFlag(inputEl);
+            });
+            td.appendChild(inputEl);
+          }
+        }
+
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+      zeilenIndexGlobal++;
+    }
   }
 }
-
-
-async function requestBackupReadAndImport() {
-  try {
-    await ensureLibs({ needXLSX: true });
-    const dirHandle = await idbGet('sharedBackupDir');
-    if (!dirHandle) { alert('Bitte zuerst „Backup-Ordner wählen“.'); return; }
-
-    const perm = await dirHandle.requestPermission?.({ mode: 'read' }) ?? 'granted';
-    if (perm !== 'granted') { alert('Zugriff nicht erlaubt.'); return; }
-
-    // UI-Hinweis entfernen
-    document.getElementById('backupFolderHint')?.classList.remove('need-permission');
-
-    const ok = await autoImportLatestBackup();
-    if (!ok) alert('Kein passendes Backup gefunden.');
-    else { aktualisieren(); afterRenderApply(); }
-  } catch (e) {
-    console.error('Permission/Import fehlgeschlagen:', e);
-    alert('Fehler beim Import: ' + (e?.message || e));
-  }
-}
-
-
-
-/** Beim Start einmal den Hinweistext setzen, falls bereits ein Ordner gespeichert ist */
-async function initBackupUI() {
-  const handle = await idbGet('sharedBackupDir');
-  await renderBackupFolderHint(handle || null);
-}
-
-/** Hilfsfunktion: Blob in Ordner schreiben (überschreiben) */
-async function writeBlobToDir(dirHandle, fileName, blob) {
-  const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(blob);
-  await writable.close();
-  return fileHandle;
-}
-
-/** Alte Backups nach Prefix/Endung drehen (letzten N behalten) */
-async function rotateBackups(dirHandle, { prefix = '', suffix = /\.xlsx?$/i, keep = BACKUP_KEEP }) {
-  const files = [];
-  for await (const [name, handle] of dirHandle.entries()) {
-    if (handle.kind !== 'file') continue;
-    if (!(suffix instanceof RegExp ? suffix.test(name) : String(name).endsWith(suffix))) continue;
-    if (prefix && !name.startsWith(prefix)) continue;
-    const f = await handle.getFile();
-    files.push({ name, handle, ts: f.lastModified });
-  }
-  files.sort((a, b) => b.ts - a.ts);
-  for (let i = keep; i < files.length; i++) {
-    try { await dirHandle.removeEntry(files[i].name); } catch { }
-  }
-}
-
-/** Timestamp für Dateinamen */
-function tsStamp(d = new Date()) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
-/** Jahres-Excel als Blob bauen (DOM-Mirror, kein Download) */
-async function buildExcelBlobForMonth(year, monthIndex) {
-  const wb = await buildWorkbookForMonthFromDOM(year, monthIndex);
-  const buf = await wb.xlsx.writeBuffer();
-  return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-}
-
-async function buildExcelBlobForYear(year) {
-  const wb = await buildWorkbookForYearFromDOM(year);
-  const buf = await wb.xlsx.writeBuffer();
-  return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-}
-
-
-
+// -----------------------------------------------------------------------------
 // #endregion
 
 
 
-// #region Backup schreiben (Jahr & Monat)
-// --- Persistenz für Monatsdaten ---------------------------------------------
 
-function persistCurrentMonthToStore() {
-  const jahr = parseInt(document.getElementById('jahr').value, 10);
-  const monat = parseInt(document.getElementById('monat').value, 10);
-  if (!Number.isFinite(jahr) || !Number.isFinite(monat) || monat === -1) return;
 
-  // rowsPerDay aus dem DOM (Rowspan der ersten Datumzelle)
-  let rowsPerDay = FAHRZEUGE.length || 1;
-  const firstRS = document.querySelector('#monatsTabelle tbody tr td[rowspan]');
-  if (firstRS) {
-    const rs = parseInt(firstRS.getAttribute('rowspan') || '0', 10);
-    if (rs > 0) rowsPerDay = rs;
-  }
+// #region Supabase Realtime (CLIENT) – Einbindung & sanfte Overrides
+//
+// 1) 🔐 Supabase-Projekt-Schlüssel eintragen
+const SUPABASE_URL = "https://<DEIN-PROJEKT>.supabase.co";
+const SUPABASE_ANON_KEY = "<DEIN-ANON-KEY>";
+const SB_TABLE = "monthly_html";     // Tabellenname wie verwendet
 
-  const rows = snapshotTable(); // gibt [fahrzeug, dienstposten, ort, von, bis, bemerkung, eingetragen]
-  setMonthData(jahr, monat, rowsPerDay, rows);
+// ─────────────────────────────────────────────────────────────────────────────
+// 2) 📌 Einmalig in Supabase (SQL) ausführen – NICHT hier im JS, nur zur Info:
+//
+//   -- Realtime braucht vollständige Row-Images
+//   alter table public.monthly_html replica identity full;
+//
+//   -- Publication anlegen (falls noch nicht vorhanden)
+//  do $$
+//   begin
+//     if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+//       create publication supabase_realtime;
+//     end if;
+//   end $$;
+//
+//   -- Tabelle zu Realtime-Publication hinzufügen
+//   alter publication supabase_realtime add table public.monthly_html;
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 3) ⤵️ Client-Setup (lazy import)
+let supabase = null;
+async function ensureSupabase() {
+  if (supabase) return supabase;
+  const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return supabase;
 }
 
-function persistStoreToLS() {
-  const obj = {};
-  STORE.byMonth.forEach((v, k) => { obj[k] = v; });
-  lsSetJson('monthStoreV1', obj);
-}
-
-function restoreStoreFromLS() {
-  const obj = lsGetJson('monthStoreV1', null);
-  if (!obj) return;
-  STORE.byMonth = new Map(Object.entries(obj));
-}
-
-// für „Tippen speichert automatisch“
-const persistDebounced = debounce(() => {
-  persistCurrentMonthToStore();
-  persistStoreToLS();
-}, 400);
-
-
-
-async function backupYearToSharedFolder(year) {
-  try {
-    const dirHandle = await idbGet('sharedBackupDir');
-    if (!dirHandle) throw new Error('Kein Backup-Ordner gesetzt. Bitte zuerst „Backup-Ordner wählen“.');
-
-    const perm = await dirHandle.requestPermission?.({ mode: 'readwrite' }) ?? 'granted';
-    if (perm !== 'granted') throw new Error('Keine Schreib-Berechtigung für den Backup-Ordner.');
-
-    const blob = await buildExcelBlobForYear(year);
-    const fileName = `Monatstabelle-AlleMonate-${year}-${tsStamp()}.xlsx`;
-    await writeBlobToDir(dirHandle, fileName, blob);
-    await rotateBackups(dirHandle, { prefix: `Monatstabelle-AlleMonate-${year}-`, suffix: /\.xlsx?$/i, keep: BACKUP_KEEP });
-  } catch (err) {
-    console.error('Backup (Jahr) fehlgeschlagen:', err);
-    throw err;
-  }
-}
-
-async function backupMonthToSharedFolder(year, monthIndex) {
-  try {
-    const dirHandle = await idbGet('sharedBackupDir');
-    if (!dirHandle) throw new Error('Kein Backup-Ordner gesetzt. Bitte zuerst „Backup-Ordner wählen“.');
-
-    const perm = await dirHandle.requestPermission?.({ mode: 'readwrite' }) ?? 'granted';
-    if (perm !== 'granted') throw new Error('Keine Schreib-Berechtigung für den Backup-Ordner.');
-
-    const blob = await buildExcelBlobForMonth(year, monthIndex);
-    const mm = String(monthIndex + 1).padStart(2, '0');
-    const fileName = `Monatstabelle-${year}-${mm}-${tsStamp()}.xlsx`;
-    await writeBlobToDir(dirHandle, fileName, blob);
-    await rotateBackups(dirHandle, { prefix: `Monatstabelle-${year}-${mm}-`, suffix: /\.xlsx?$/i, keep: BACKUP_KEEP });
-  } catch (err) {
-    console.error('Backup (Monat) fehlgeschlagen:', err);
-    throw err;
-  }
-}
-
-// #endregion
-
-
-
-// #region Fix: Restore-Button auf manuellen Restore umverdrahten
-
-document.getElementById('restoreBackupBtn')
-  ?.addEventListener('click', requestBackupReadAndImport);
-
-// #endregion
-
-
-
-//#region supabase
-// === Supabase: HTML des <tbody> pro (year, month) laden/speichern =========
-
-
-function bindCellInputEvents() {
-  document.querySelectorAll('#monatsTabelle tbody input').forEach((inputEl) => {
-    // Ursprungswert merken (für "changed"-Markierung)
-    inputEl.dataset.orig = inputEl.value;
-
-    // Eingabe-Handler wie beim initialen Render
-    inputEl.addEventListener('input', () => {
-      if (bearbeitungGesperrt) return;
-      setUnsaved(true);
-      updateChangedFlag(inputEl);
-      persistDebounced();
-    });
-  });
-}
-
-
-
-
-
-
-
-
-// Hilfsfunktion: aktuelle Auswahl aus den Selects
-function sbGetYearMonth() {
+// 4) Helpers (IDs der aktuellen Auswahl)
+function _selYM() {
   const y = parseInt(document.getElementById('jahr')?.value ?? new Date().getFullYear(), 10);
   const m = parseInt(document.getElementById('monat')?.value ?? new Date().getMonth(), 10);
   return { year: y, month: m };
 }
 
-// Laden: überschreibt das aktuelle <tbody> mit dem gespeicherten HTML
+// 5) Datensatz laden → tbody ersetzen (OVERRIDE-Logik)
 async function sbLoadTbody(year, month) {
   try {
-    if (!supabase || month === -1) return;
+    await ensureSupabase();
+    if (month === -1) return; // Jahresansicht: kein einzelnes <tbody>
     const { data, error } = await supabase
-      .from("monthly_html")
+      .from(SB_TABLE)
       .select("html")
       .eq("year", year)
       .eq("month", month)
       .maybeSingle();
 
-    if (error) { console.warn("Supabase SELECT Fehler:", error); return; }
-    if (data?.html) {
-      const tb = document.querySelector("#monatsTabelle tbody");
-      if (!tb) return;
-      tb.innerHTML = data.html;
+    if (error) { console.warn("[Supabase] SELECT Fehler:", error); return; }
+    if (!data?.html) return;
 
-      // WICHTIG: Events neu binden
-      bindCellInputEvents();
+    const tb = document.querySelector("#monatsTabelle tbody");
+    if (!tb) return;
 
-      clearChangeMarkersAndRebase?.();
-      setUnsaved?.(false);
+    tb.innerHTML = data.html;
+
+    // Nachladen: Eingabe-Events & UI-Status wiederherstellen
+    if (typeof bindCellInputEvents === "function") bindCellInputEvents();
+    if (typeof clearChangeMarkersAndRebase === "function") clearChangeMarkersAndRebase();
+    if (typeof setUnsaved === "function") setUnsaved(false);
+  } catch (e) {
+    console.warn("[Supabase] Load Fehler:", e);
+  }
+}
+
+// 6) tbody speichern (Upsert) (OVERRIDE-Logik)
+async function sbSaveTbody(year, month) {
+  try {
+    await ensureSupabase();
+    if (month === -1) return;
+    const tb = document.querySelector("#monatsTabelle tbody");
+    if (!tb) return;
+
+    const html = tb.innerHTML;
+
+    // Existiert bereits?
+    const { data: existing, error: selErr } = await supabase
+      .from(SB_TABLE)
+      .select("id")
+      .eq("year", year)
+      .eq("month", month)
+      .maybeSingle();
+    if (selErr) throw selErr;
+
+    if (existing?.id) {
+      const { error: updErr } = await supabase
+        .from(SB_TABLE)
+        .update({ html, updated_at: new Date().toISOString() })
+        .eq("id", existing.id);
+      if (updErr) throw updErr;
+    } else {
+      const { error: insErr } = await supabase
+        .from(SB_TABLE)
+        .insert({ year, month, html });
+      if (insErr) throw insErr;
     }
   } catch (e) {
-    console.warn("sbLoadTbody Fehler:", e);
+    console.error("[Supabase] Save Fehler:", e);
+    throw e;
   }
 }
 
-// Speichern: aktuelles <tbody> hochladen (Upsert je year+month)
-async function sbSaveTbody(year, month) {
-  if (!supabase || month === -1) return;
-  const tb = document.querySelector("#monatsTabelle tbody");
-  if (!tb) return;
-  const html = tb.innerHTML;
-
-  const { data: existing, error: selErr } = await supabase
-    .from("monthly_html")
-    .select("id")
-    .eq("year", year)
-    .eq("month", month)
-    .maybeSingle();
-  if (selErr) throw selErr;
-
-  if (existing?.id) {
-    const { error: updErr } = await supabase
-      .from("monthly_html")
-      .update({ html, updated_at: new Date().toISOString() })
-      .eq("id", existing.id);
-    if (updErr) throw updErr;
-  } else {
-    const { error: insErr } = await supabase
-      .from("monthly_html")
-      .insert({ year, month, html });
-    if (insErr) throw insErr;
+// 7) Realtime abonnieren (INSERT/UPDATE) (OVERRIDE-Logik)
+let _sbRealtimeSubscribed = false;
+async function sbSubscribeRealtime() {
+  try {
+    await ensureSupabase();
+    if (_sbRealtimeSubscribed) return;
+    supabase
+      .channel(`public:${SB_TABLE}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: SB_TABLE },
+        (payload) => {
+          // Nur reloaden, falls die Nachricht den aktuell angezeigten Monat betrifft
+          const { year, month } = _selYM();
+          const row = payload.new ?? payload.old ?? {};
+          if (row.year === year && row.month === month) {
+            const tb = document.querySelector("#monatsTabelle tbody");
+            if (!tb) return;
+            if (payload.new?.html) {
+              tb.innerHTML = payload.new.html;
+              if (typeof bindCellInputEvents === "function") bindCellInputEvents();
+              if (typeof clearChangeMarkersAndRebase === "function") clearChangeMarkersAndRebase();
+              if (typeof setUnsaved === "function") setUnsaved(false);
+            }
+          }
+        }
+      )
+      .subscribe();
+    _sbRealtimeSubscribed = true;
+  } catch (e) {
+    console.warn("[Supabase] Realtime subscribe Fehler:", e);
   }
 }
 
+// 8) VERÄNDERT: „aktualisieren“ sanft patchen, damit nach jedem Render
+//    (Monat wechselt) automatisch aus Supabase geladen und Realtime aktiv ist,
+//    ohne deinen Originalcode hart zu überschreiben.
+(function patchAktualisieren() {
+  const original = window.aktualisieren;
+  window.aktualisieren = function patchedAktualisieren(...args) {
+    // 8a) Original ausführen (dein bestehendes Rendern)
+    try { original?.apply(this, args); } catch (e) { console.warn("aktualisieren(original) Fehler:", e); }
 
-// (Optional) Realtime-Updates (wenn Seite in mehreren Fenstern offen ist)
-function sbSubscribeRealtime() {
-  if (!supabase) return;
-  supabase
-    .channel("public:monthly_html")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "monthly_html" }, payload => {
-      const { year, month } = sbGetYearMonth();
-      if (payload.new?.year === year && payload.new?.month === month) {
-        const tb = document.querySelector("#monatsTabelle tbody");
-        if (tb) {
-          tb.innerHTML = payload.new.html;
-          bindCellInputEvents();     // <—
-          clearChangeMarkersAndRebase?.();
-          setUnsaved?.(false);
-        }
+    // 8b) Danach: für Einzelmonat aus Supabase nachziehen
+    try {
+      const jahr = parseInt(document.getElementById('jahr')?.value ?? "0", 10);
+      const monat = parseInt(document.getElementById('monat')?.value ?? "-1", 10);
+      if (Number.isFinite(jahr) && Number.isFinite(monat) && monat !== -1) {
+        sbLoadTbody(jahr, monat);
       }
-    })
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "monthly_html" }, payload => {
-      const { year, month } = sbGetYearMonth();
-      if (payload.new?.year === year && payload.new?.month === month) {
-        const tb = document.querySelector("#monatsTabelle tbody");
-        if (tb) {
-          tb.innerHTML = payload.new.html;
-          bindCellInputEvents();     // <—
-          clearChangeMarkersAndRebase?.();
-          setUnsaved?.(false);
-        }
-      }
-    })
-    .subscribe();
-}
+    } catch {}
+
+    // 8c) Realtime beim ersten Mal aktivieren
+    sbSubscribeRealtime();
+  };
+})();
+
+// 9) VERÄNDERT: Speichern-Button zusätzlich mit Supabase-Speichern verbinden.
+//    (Falls du bereits einen Listener hast, macht doppelt nichts kaputt –
+//     wir hängen uns nur hinzu und rufen sbSaveTbody auf.)
+(function wireSaveButtonToSupabase() {
+  const saveBtn = document.getElementById('saveBtn');
+  if (!saveBtn) return;
+  saveBtn.addEventListener('click', async () => {
+    try {
+      const { year, month } = _selYM();
+      await sbSaveTbody(year, month);
+    } catch (e) {
+      // Fehler bereits geloggt
+    }
+  });
+})();
+
+// 10) Beim ersten Laden direkt Realtime scharf schalten
+sbSubscribeRealtime();
+// #endregion
 
 
-//#endregion
 
 
 
-
-// #region Init/Wiring (vollständig)
+// #region Init/Wiring
 
 (function init() {
-  async function refreshBackupHint() {
-    const hint = document.getElementById('backupFolderHint');
-    if (!hint) return;
-    try {
-      const dirHandle = await idbGet('sharedBackupDir');
-      if (!dirHandle) {
-        hint.textContent = '(kein Backup-Ordner gewählt)';
-        return;
-      }
-      // Permission-Status prüfen
-      let perm = 'prompt';
-      if (dirHandle.queryPermission) {
-        perm = await dirHandle.queryPermission({ mode: 'read' });
-      }
-      if (perm !== 'granted' && dirHandle.requestPermission) {
-        // nicht anstoßen – nur Hinweis anzeigen
-        hint.textContent = `Ordner gesetzt (${dirHandle.name}) – Zugriff noch nicht bestätigt`;
-      } else {
-        hint.textContent = `Backup-Ordner: ${dirHandle.name}`;
-      }
-    } catch {
-      // still
-    }
-  }
-
-  (async function start() {
-    // 1) Grund-UI aufsetzen (Selects etc.)
+  (async function init() {
+    // Auswahl vorbereiten
     baueGrundAuswahl();
 
-    // 2) (optional) persistente Origin-Quota anfragen
-    if (navigator.storage && navigator.storage.persist) {
-      try { await navigator.storage.persist(); } catch { }
-    }
-
-    // 3) Referenzen & Auswahl-Listener
     const monatSel = document.getElementById('monat');
     const jahrSel = document.getElementById('jahr');
+    const saveBtn = document.getElementById('saveBtn');
 
-    const onPickChange = () => {
-      // vor Rendern aktuelle Eingaben in STORE übernehmen
-      persistCurrentMonthToStore?.();
-      persistStoreToLS?.();
-
-      aktualisieren();
-      afterRenderApply();
-    };
+    const onPickChange = () => { aktualisieren(); afterRenderApply(); };
     monatSel?.addEventListener('change', onPickChange);
     jahrSel?.addEventListener('change', onPickChange);
     jahrSel?.addEventListener('input', onPickChange);
 
-    // 4) Lokale Sicherung (LS) laden – falls vorhanden
-    restoreStoreFromLS?.();
-
-    // 5) Versuche vor dem ersten Render die neueste Backup-Excel still zu importieren
-    //    (funktioniert nur, wenn der Ordner schon gewählt & Berechtigung ok ist)
-    try {
-      await ensureLibs({ needXLSX: true });
-      const did = await autoImportOnLoad?.({ onlyIfStoreEmpty: false });
-      if (did) {
-        persistStoreToLS?.();
-      }
-    } catch (e) {
-      console.warn('Auto-Import beim Start übersprungen:', e);
-    }
-
-    // 6) Erstes Rendern (nach LS/Backup-Import)
+    // erster Render
     aktualisieren();
     afterRenderApply();
 
-    // 7) Backup-Hinweis initial anzeigen
-    await refreshBackupHint?.();
 
-    // 8) Buttons verdrahten
+    // Lock/Unlock
+    document.getElementById('unlockBtn')?.addEventListener('click', entsperren);
+    document.getElementById('lockBtn')?.addEventListener('click', sperren);
 
-    // 8a) Import (versteckter <input type="file"> bei Bedarf erstellen)
+    // Export-Buttons
+    document.getElementById('exportXlsxBtn')?.addEventListener('click', async () => {
+      const curMonth = parseInt(monatSel.value, 10);
+      if (curMonth === -1) await exportYearWithExcelJS_DOMMirror();
+      else await exportMitExcelJS();
+    });
+
+    // Import: ein versteckter File-Input
     let fileInput = document.getElementById('importExcelInput');
     if (!fileInput) {
       fileInput = document.createElement('input');
@@ -2229,12 +2109,6 @@ function sbSubscribeRealtime() {
       if (!file) return;
       try {
         await importAllMonthYearSheets(file);
-        // nach Import direkt rendern & LS aktualisieren
-        aktualisieren();
-        afterRenderApply();
-        // Realtime-Listener starten
-        sbSubscribeRealtime();
-        persistStoreToLS?.();
       } catch (err) {
         console.error(err);
         alert('Import fehlgeschlagen: ' + (err?.message || err));
@@ -2243,111 +2117,42 @@ function sbSubscribeRealtime() {
       }
     });
 
-    // 8b) Export (Monat oder Jahr)
-    document.getElementById('exportXlsxBtn')?.addEventListener('click', async () => {
-      const curMonth = parseInt(monatSel?.value ?? '0', 10);
-      // aktuelle Eingaben sichern
-      persistCurrentMonthToStore?.();
-      persistStoreToLS?.();
-
-      if (curMonth === -1) {
-        await exportYearWithExcelJS_DOMMirror();
-      } else {
-        await exportMitExcelJS();
-      }
-    });
-
-    // 8c) Backup-Ordner wählen
-    document.getElementById('chooseBackupFolderBtn')?.addEventListener('click', async () => {
-      await pickSharedBackupFolder();
-      await refreshBackupHint?.();
-    });
-
-    // 8e) Speichern-Button unten: Export + optionales Backup in Ordner
-    const saveBtn = document.getElementById('saveBtn');
+    // Speichern (inkl. Platz für externen Backup-Block)
     saveBtn?.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const y = parseInt(document.getElementById('jahr')?.value ?? '0', 10) || (getTodayDate()).getFullYear();
-      const m = parseInt(document.getElementById('monat')?.value ?? '0', 10) || 0;
-
-      // aktuelle Eingaben vor dem Export sichern
-      persistCurrentMonthToStore?.();
-      persistStoreToLS?.();
-
-      // --- Supabase: aktuelles <tbody> hochladen --------------------------------
-      try {
-        await sbSaveTbody(y, m);
-      } catch (err) {
-        console.error('Supabase Save Fehler:', err);
-        alert('Speichern in der Cloud fehlgeschlagen: ' + (err?.message || err));
-      }
-
+      const jahr = parseInt(document.getElementById('jahr')?.value, 10);
+      const monat = parseInt(document.getElementById('monat')?.value, 10);
 
       try {
-        if (m === -1) {
-          await backupYearToSharedFolder(y);
-        } else {
-          await backupMonthToSharedFolder(y, m);
-        }
-        setUnsaved(false);
-        clearChangeMarkersAndRebase();
-        document.activeElement?.blur?.();
+        speichereDaten(jahr, monat);
       } catch (err) {
-        console.error('Speichern/Export fehlgeschlagen:', err);
-        alert('Speichern/Export fehlgeschlagen: ' + (err?.message || err));
+        console.warn('Speichern fehlgeschlagen:', err);
+        return;
       }
+
+      setUnsaved(false);
+      clearChangeMarkersAndRebase();
+      document.activeElement?.blur?.();
+      document.body.classList.add('no-hover');
+      setTimeout(() => document.body.classList.remove('no-hover'), 200);
     });
 
-    // 9) Lock/Unlock
-    document.getElementById('unlockBtn')?.addEventListener('click', entsperren);
-    document.getElementById('lockBtn')?.addEventListener('click', sperren);
   })();
 
-  // 7) sonstiges UI
+  // Optional: Lightbox/Escape
   const lightbox = document.getElementById('imgLightbox');
   if (lightbox) {
     lightbox.addEventListener('click', () => (lightbox.style.display = 'none'));
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape') lightbox.style.display = 'none'; });
   }
 
-  // Back-to-top Button (du hast #backToTop in deiner Button-Leiste)
-  document.addEventListener('DOMContentLoaded', () => {
-    const topBtn = document.getElementById('backToTop');
-    if (!topBtn) return;
-    topBtn.addEventListener('click', () => {
-      const noMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      window.scrollTo({ top: 0, behavior: noMotion ? 'auto' : 'smooth' });
-    });
-    const THRESHOLD = 200;
-    function toggleTopBtn() {
-      topBtn.style.display = (window.scrollY > THRESHOLD) ? 'block' : 'none';
-    }
-    window.addEventListener('scroll', toggleTopBtn, { passive: true });
-    toggleTopBtn();
-  });
-
-  // Reflow Right Rail bei Resize
   window.addEventListener('resize', reflowRightRail);
 })();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // #endregion
+
 
 
 
